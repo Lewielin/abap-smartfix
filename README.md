@@ -2,7 +2,7 @@
 
 > Auto Fix ATC Findings, Pragmas and Modern Syntax for SAP ABAP
 
-![ABAP SmartFix demo](media/demo.gif)
+![ABAP SmartFix demo](https://raw.githubusercontent.com/Lewielin/abap-smartfix/main/media/demo.gif)
 
 A VS Code extension for **SAP ABAP** development. It lists the **ATC / Code Inspector findings** in your ABAP code and fixes them automatically:
 
@@ -74,41 +74,9 @@ Custom ATC checks or other releases can accept other names. Run **Learn Annotati
 
 ## Supported checks
 
-| Annotation | Check (SCI check class) | Rewrite |
-| --- | --- | :-: |
-| `"#EC CI_SUBRC` | `sy-subrc` not checked after database access, `READ TABLE`, `AUTHORITY-CHECK`, `CALL FUNCTION … EXCEPTIONS` (SYSUBRC; this check has no pragma) | |
-| `"#EC CI_NOORDER` / `"#EC WARNOK` | `SELECT SINGLE` that clearly does not use the full primary key: "SELECT SINGLE is possibly not unique" (NO_ORDER_BY). Reported when there is no `WHERE`, or `OR` / `NOT` / `IN` / `LIKE` / `BETWEEN` / range comparisons / dynamic conditions; a `WHERE` made only of `=` conditions joined by `AND` is treated as the full key (`selectSingleCheck: all` lists every one) | ✅ |
-| — | `SELECT … INTO TABLE` without `ORDER BY` whose result is later used in an order-dependent way (NO_ORDER_BY; ATC reports it on the later statement with `"#EC CI_SORTED`) | ✅ `ORDER BY PRIMARY KEY` (review) |
-| `"#EC CI_NOWHERE` | `SELECT` without `WHERE` (SELECT_TAW_A) | |
-| `"#EC CI_SEL_NESTED` | `SELECT` inside a loop (SELECT_NESTED) | |
-| `"#EC CI_DYNTAB` / `"#EC CI_DYNWHERE` | Dynamic table name / dynamic `WHERE` condition in SQL (SELECT_TAW_SEC01, IMUD_TAW_SEC01) | |
-| `"#EC CI_CLIENT` | `CLIENT SPECIFIED` (SELECT_TAW_SEC01, IMUD_TAW_SEC01) | |
-| `"#EC CI_STDSEQ` | Linear search on a standard table (ITAB_PERFORMANCE; inside a loop SEQ_ACC_ITAB_NESTED) | |
-| `"#EC CI_CALLTA` / `"#EC CI_SUBMIT` | `CALL TRANSACTION` (not with `WITH AUTHORITY-CHECK`) / `SUBMIT` (CRITICAL_STATEMENTS) | |
-| `##NO_BREAK` / `"#EC NOBREAK` | `BREAK-POINT` / `BREAK user` (extended check) | ✅ |
-| `##NO_HANDLER` | Empty `CATCH` block (extended check) | |
-| `##LOOP_AT_OK` / `"#EC AT_LOOP_WH` | `AT NEW` / `AT END OF` / `AT FIRST` / `AT LAST` in a `LOOP … WHERE / FROM / TO` (extended check) | |
-| `##NEEDED` | Declared but never used (extended check) | ✅ |
-| `##NO_TEXT` | Text literal without a text symbol, also in string templates (extended check) | |
-| `##CALLED` | `FORM` without a matching `PERFORM` (extended check; off by default) | |
-| — | Obsolete syntax: `MOVE` (`?TO`, `EXACT`), `ADD` / `SUBTRACT` / `MULTIPLY` / `DIVIDE` (→ `+=` etc.), `COMPUTE`, `REFRESH`, `DESCRIBE TABLE … LINES`, `CALL METHOD` (`RECEIVING` → `x = m( )`), `CREATE OBJECT`, `GET REFERENCE OF` | ✅ |
-| — | Obsolete pseudo comments to pragmas (the SLIN table, 129 pairs checked against SAP): `"#EC NEEDED` → `##NEEDED`, `"#EC NOBREAK` → `##NO_BREAK`, … | ✅ |
+ABAP SmartFix covers a broad range of ATC / Code Inspector findings — SQL performance and safety (e.g. `SELECT SINGLE` without the full key, `SELECT` inside a loop, missing `WHERE`), obsolete syntax (`MOVE`, `ADD`/`SUBTRACT`/…, `CALL METHOD`, …), unused declarations, critical statements, loop and database anti-patterns, and more. Each finding's annotation is matched against your system's actual SCI message catalog rather than guessed, and safe cases are rewritten automatically.
 
-Performance, robustness and security checks (see [SCI-COVERAGE.md](SCI-COVERAGE.md)):
-
-| Check (SCI check class) | Annotation | Rewrite |
-| --- | --- | :-: |
-| Database change (`INSERT` / `UPDATE` / `MODIFY` / `DELETE`) inside a loop (IMUD_NESTED) | `"#EC CI_IMUD_NESTED` | ✅ `LOOP … MODIFY dbtab FROM wa … ENDLOOP` → `MODIFY dbtab FROM TABLE itab` (review) |
-| `SORT` inside a loop (SORT_IN_LOOP) | `"#EC CI_SORTLOOP` | ✅ moved in front of the loop when the loop only reads the table (review) |
-| `SELECT … ENDSELECT` left with `EXIT` (SELECT_EXIT) | `"#EC CI_EXIT_SELECT` | ✅ `UP TO 1 ROWS` when the `EXIT` is unconditional |
-| `CHECK` right after `SELECT` (SELECT_THEN_CHECK) | `"#EC CI_CHECK` | |
-| `FOR ALL ENTRIES` without checking that the table has rows (FOR_ALL_ENTRIES) | `"#EC CI_FAE_LINES_ENSURED` | ✅ wrapped in `IF itab IS NOT INITIAL … ENDIF` with its sy-subrc check (review) |
-| `UPDATE … SET` / `DELETE FROM` without `WHERE` (IMUD_TAW_A) | `"#EC CI_NOWHERE` | |
-| Critical statements (CRITICAL_STATEMENTS): `EXEC SQL`, `CALL '…'`, `SYSTEM-CALL`, `GENERATE SUBROUTINE POOL`, `INSERT` / `DELETE REPORT`, `READ REPORT`, `EDITOR-CALL`, `ROLLBACK WORK` | `"#EC CI_EXECSQL`, `CI_CCALL`, `CI_SYSTEMCALL`, `CI_GENERATE`, `CI_TABL_EXCEPTN`, `CI_READ_REP`, `CI_EDITORCALL`, `CI_ROLLBACK` | |
-| `LOOP AT … INTO` + `MODIFY … FROM` the work area (LOOP_AT) | `"#EC CI_LOOP_INTO_WA` | |
-| Interface method called inside a loop (INTFMETHS_IN_LOOP) | `"#EC CI_INTF_LOOP` | |
-
-Run **Show Rules** for each rule's id and exact trigger conditions.
+Run **Show Rules** in VS Code for the full, up-to-date list of rules, their ids and exact trigger conditions.
 
 ## Settings
 
