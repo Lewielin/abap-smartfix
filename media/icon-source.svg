@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#0B2461"/>
+    </linearGradient>
+    <linearGradient id="badge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBBF24"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#020B24" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+
+  <!-- code page with folded corner -->
+  <g filter="url(#shadow)">
+    <path d="M62 44h86l38 38v122a12 12 0 0 1-12 12H62a12 12 0 0 1-12-12V56a12 12 0 0 1 12-12z" fill="#FFFFFF"/>
+    <path d="M148 44v26a12 12 0 0 0 12 12h26z" fill="#C7D2FE"/>
+  </g>
+
+  <!-- code lines -->
+  <g stroke-linecap="round" stroke-width="10">
+    <path d="M74 104h58" stroke="#1E3A8A"/>
+    <path d="M74 130h34" stroke="#94A3B8"/>
+    <path d="M118 130h30" stroke="#1E3A8A"/>
+    <path d="M74 156h44" stroke="#94A3B8"/>
+    <path d="M74 182h28" stroke="#1E3A8A"/>
+  </g>
+
+  <!-- check badge -->
+  <g filter="url(#shadow)">
+    <circle cx="180" cy="180" r="46" fill="url(#badge)" stroke="#0B2461" stroke-width="6"/>
+  </g>
+  <path d="M159 181l14 14 28-30" fill="none" stroke="#0B2461" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- sparkle -->
+  <path d="M206 44c3 15 7 19 22 22-15 3-19 7-22 22-3-15-7-19-22-22 15-3 19-7 22-22z" fill="#FDE68A"/>
+</svg>

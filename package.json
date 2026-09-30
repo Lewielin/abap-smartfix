@@ -1,0 +1,548 @@
+{
+  "name": "abap-smartfix",
+  "displayName": "SmartFix for ABAP",
+  "description": "Auto Fix ATC Findings, Pragmas and Modern Syntax for SAP ABAP",
+  "version": "1.5.1",
+  "publisher": "Lewie-Lin",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lewielin/abap-smartfix.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Lewielin/abap-smartfix/issues"
+  },
+  "homepage": "https://github.com/Lewielin/abap-smartfix#readme",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0B2461",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "abap",
+    "sap",
+    "sap abap",
+    "smartfix",
+    "atc",
+    "code inspector",
+    "pseudo comment",
+    "pragma",
+    "auto fix",
+    "quick fix"
+  ],
+  "main": "./src/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In an untrusted workspace the custom rules file is not read, and annotation names, fix modes and the DDIC destination are only taken from your user settings.",
+      "restrictedConfigurations": [
+        "abap-smartfix.customRulesFile",
+        "abap-smartfix.tokenOverrides",
+        "abap-smartfix.ruleFixModes",
+        "abap-smartfix.fixMode",
+        "abap-smartfix.ddic.destination"
+      ]
+    },
+    "virtualWorkspaces": true
+  },
+  "activationEvents": [
+    "onLanguage:abap",
+    "workspaceContains:**/*.abap"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "abap",
+        "aliases": [
+          "ABAP",
+          "abap"
+        ],
+        "extensions": [
+          ".abap"
+        ]
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "abap-smartfix",
+          "title": "SmartFix for ABAP",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "abap-smartfix": [
+        {
+          "id": "abap-smartfix.findings",
+          "name": "ATC Findings"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "abap-smartfix.scanFile",
+        "title": "SmartFix for ABAP: Analyze Current File",
+        "icon": "$(search)"
+      },
+      {
+        "command": "abap-smartfix.scanWorkspace",
+        "title": "Analyze Workspace",
+        "category": "SmartFix for ABAP",
+        "icon": "$(search-fuzzy)"
+      },
+      {
+        "command": "abap-smartfix.applyAll",
+        "title": "SmartFix for ABAP: Auto Fix Current File",
+        "icon": "$(wand)"
+      },
+      {
+        "command": "abap-smartfix.applyFile",
+        "title": "Auto Fix Checked Findings in This File",
+        "category": "SmartFix for ABAP",
+        "icon": "$(wand)"
+      },
+      {
+        "command": "abap-smartfix.applySuppressOnly",
+        "title": "SmartFix for ABAP: Add Pragmas & Pseudo Comments Only",
+        "icon": "$(comment)"
+      },
+      {
+        "command": "abap-smartfix.previewFix",
+        "title": "SmartFix for ABAP: Preview Fixes",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "abap-smartfix.applyWorkspace",
+        "title": "Auto Fix Checked Findings in All Files",
+        "category": "SmartFix for ABAP",
+        "icon": "$(wand)"
+      },
+      {
+        "command": "abap-smartfix.fixFinding",
+        "title": "Fix This Finding",
+        "category": "SmartFix for ABAP",
+        "icon": "$(wand)"
+      },
+      {
+        "command": "abap-smartfix.fixSelection",
+        "title": "SmartFix for ABAP: Fix Findings in Selection…",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "abap-smartfix.checkAll",
+        "title": "Check All Findings",
+        "category": "SmartFix for ABAP",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "abap-smartfix.uncheckAll",
+        "title": "Uncheck All Findings",
+        "category": "SmartFix for ABAP",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "abap-smartfix.copyAiPrompt",
+        "title": "SmartFix for ABAP: Copy AI Prompt",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "abap-smartfix.showAiPrompt",
+        "title": "Open AI Prompt",
+        "category": "SmartFix for ABAP",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "abap-smartfix.copyAiPromptWorkspace",
+        "title": "Copy AI Prompt (All Scanned Files)",
+        "category": "SmartFix for ABAP",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "abap-smartfix.showReport",
+        "title": "Generate Markdown Report",
+        "category": "SmartFix for ABAP",
+        "icon": "$(output)"
+      },
+      {
+        "command": "abap-smartfix.listRules",
+        "title": "Show Rules",
+        "category": "SmartFix for ABAP",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "abap-smartfix.learnAnnotations",
+        "title": "Learn Annotation Names from Workspace",
+        "category": "SmartFix for ABAP",
+        "icon": "$(lightbulb)"
+      },
+      {
+        "command": "abap-smartfix.clear",
+        "title": "Clear Results",
+        "category": "SmartFix for ABAP",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "abap-smartfix.clearDdicCache",
+        "title": "SmartFix for ABAP: Clear DDIC Cache"
+      },
+      {
+        "command": "abap-smartfix.toggleAtc",
+        "title": "Use ATC Results from ADT",
+        "category": "SmartFix for ABAP"
+      },
+      {
+        "command": "abap-smartfix.atcOn",
+        "title": "ATC from ADT: Off (click to use ATC results)",
+        "category": "SmartFix for ABAP",
+        "icon": "$(circle-large-outline)"
+      },
+      {
+        "command": "abap-smartfix.atcOff",
+        "title": "ATC from ADT: On (click to stop using ATC results)",
+        "category": "SmartFix for ABAP",
+        "icon": "$(pass-filled)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "abap-smartfix.applyFile",
+          "when": "false"
+        },
+        {
+          "command": "abap-smartfix.fixFinding",
+          "when": "false"
+        },
+        {
+          "command": "abap-smartfix.atcOn",
+          "when": "false"
+        },
+        {
+          "command": "abap-smartfix.atcOff",
+          "when": "false"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "abap-smartfix.scanFile",
+          "when": "editorLangId == abap || resourceExtname == .abap",
+          "group": "abap-smartfix@1"
+        },
+        {
+          "command": "abap-smartfix.fixSelection",
+          "when": "editorHasSelection && (editorLangId == abap || resourceExtname == .abap)",
+          "group": "abap-smartfix@1"
+        },
+        {
+          "command": "abap-smartfix.copyAiPrompt",
+          "when": "editorLangId == abap || resourceExtname == .abap",
+          "group": "abap-smartfix@2"
+        },
+        {
+          "command": "abap-smartfix.applyAll",
+          "when": "editorLangId == abap || resourceExtname == .abap",
+          "group": "abap-smartfix@3"
+        },
+        {
+          "command": "abap-smartfix.previewFix",
+          "when": "editorLangId == abap || resourceExtname == .abap",
+          "group": "abap-smartfix@4"
+        },
+        {
+          "command": "abap-smartfix.applySuppressOnly",
+          "when": "editorLangId == abap || resourceExtname == .abap",
+          "group": "abap-smartfix@5"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "abap-smartfix.scanFile",
+          "when": "editorLangId == abap || resourceExtname == .abap",
+          "group": "navigation@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "abap-smartfix.scanWorkspace",
+          "when": "view == 'abap-smartfix.findings'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "abap-smartfix.applyWorkspace",
+          "when": "view == 'abap-smartfix.findings'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "abap-smartfix.copyAiPromptWorkspace",
+          "when": "view == 'abap-smartfix.findings'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "abap-smartfix.showReport",
+          "when": "view == 'abap-smartfix.findings'",
+          "group": "navigation@4"
+        },
+        {
+          "command": "abap-smartfix.clear",
+          "when": "view == 'abap-smartfix.findings'",
+          "group": "navigation@5"
+        },
+        {
+          "command": "abap-smartfix.listRules",
+          "when": "view == 'abap-smartfix.findings'",
+          "group": "1_export@2"
+        },
+        {
+          "command": "abap-smartfix.checkAll",
+          "when": "view == 'abap-smartfix.findings'",
+          "group": "0_select@1"
+        },
+        {
+          "command": "abap-smartfix.uncheckAll",
+          "when": "view == 'abap-smartfix.findings'",
+          "group": "0_select@2"
+        },
+        {
+          "command": "abap-smartfix.learnAnnotations",
+          "when": "view == 'abap-smartfix.findings'",
+          "group": "2_annotations@1"
+        },
+        {
+          "command": "abap-smartfix.toggleAtc",
+          "when": "view == 'abap-smartfix.findings'",
+          "group": "3_atc@1",
+          "toggled": "config.abap-smartfix.atc.enabled"
+        },
+        {
+          "command": "abap-smartfix.atcOff",
+          "when": "view == 'abap-smartfix.findings' && config.abap-smartfix.atc.enabled",
+          "group": "navigation@0"
+        },
+        {
+          "command": "abap-smartfix.atcOn",
+          "when": "view == 'abap-smartfix.findings' && !config.abap-smartfix.atc.enabled",
+          "group": "navigation@0"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "abap-smartfix.applyFile",
+          "when": "view == 'abap-smartfix.findings' && viewItem == 'abap-smartfix.file'",
+          "group": "inline"
+        },
+        {
+          "command": "abap-smartfix.fixFinding",
+          "when": "view == 'abap-smartfix.findings' && viewItem == 'abap-smartfix.finding'",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SmartFix for ABAP",
+      "properties": {
+        "abap-smartfix.fileExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            ".abap"
+          ],
+          "description": "Additional file extensions treated as ABAP, besides documents whose languageId is abap."
+        },
+        "abap-smartfix.include": {
+          "type": "string",
+          "default": "**/*.abap",
+          "description": "Glob of files to include when analyzing the workspace."
+        },
+        "abap-smartfix.exclude": {
+          "type": "string",
+          "default": "**/node_modules/**",
+          "description": "Glob of files to exclude when analyzing the workspace."
+        },
+        "abap-smartfix.maxFiles": {
+          "type": "number",
+          "default": 500,
+          "description": "Maximum number of files to analyze in the workspace."
+        },
+        "abap-smartfix.scanOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Analyze the file again when it is saved."
+        },
+        "abap-smartfix.scanOnType": {
+          "type": "boolean",
+          "default": true,
+          "description": "Analyze an already analyzed file again about 0.5 seconds after typing stops, so the sidebar and Problems panel follow unsaved edits."
+        },
+        "abap-smartfix.scanOnOpen": {
+          "type": "boolean",
+          "default": false,
+          "description": "Analyze ABAP files automatically when they are opened."
+        },
+        "abap-smartfix.diagnosticSeverity": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "error",
+            "warning",
+            "information",
+            "hint"
+          ],
+          "default": "information",
+          "description": "Severity shown in the Problems panel; auto uses each rule's own severity."
+        },
+        "abap-smartfix.disabledRules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Rule ids to disable, e.g. [\"select-no-order-by\"]."
+        },
+        "abap-smartfix.enabledRules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Rule ids to force on (overrides rules that are off by default), e.g. [\"form-not-called\"]."
+        },
+        "abap-smartfix.tokenOverrides": {
+          "type": "object",
+          "default": {},
+          "description": "Annotation to use per rule, e.g. { \"sort-in-loop\": \"\\\"#EC CI_SORT_IN_LOOP\" }. The built-in names are those of the SCI message catalog of an S/4HANA system; set another name here when your system or a custom ATC check uses one (Learn Annotation Names from Workspace suggests them). For an ATC message that is listed as a manual fix, use \"atc:<message id>\" as the key, e.g. { \"atc:0051\": \"\\\"#EC CI_SGLSELECT\" }. Only a plain pragma (##NAME) or pseudo comment (\\\"#EC NAME) is accepted."
+        },
+        "abap-smartfix.verifyFixes": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Self-check every code rewrite before applying it: the rewrite is applied in memory and analyzed again; if the block structure changes or the finding is still there, it falls back to an annotation or manual fix."
+        },
+        "abap-smartfix.fixMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "rewrite",
+            "suppress"
+          ],
+          "default": "auto",
+          "enumDescriptions": [
+            "Rewrite code when the rewrite is safe (same semantics); otherwise add a Pragma / Pseudo Comment",
+            "Rewrite whenever a rewrite exists, including ones that change behavior and need review (e.g. adding ORDER BY PRIMARY KEY, commenting out unused declarations); otherwise add an annotation",
+            "Only add Pragmas / Pseudo Comments; never change code"
+          ],
+          "description": "How auto fix handles findings."
+        },
+        "abap-smartfix.ruleFixModes": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "rewrite",
+              "suppress"
+            ]
+          },
+          "description": "Fix mode per rule, overriding abap-smartfix.fixMode, e.g. { \"select-single\": \"suppress\", \"select-no-order-by\": \"rewrite\" }."
+        },
+        "abap-smartfix.suppressStyle": {
+          "type": "string",
+          "enum": [
+            "rule",
+            "pragma",
+            "pseudo"
+          ],
+          "default": "rule",
+          "enumDescriptions": [
+            "Use each rule's default form",
+            "Prefer the Pragma (##) when the rule has one",
+            "Prefer the Pseudo Comment (\"#EC) when the rule has one"
+          ],
+          "description": "Which form to add when a rule has both a Pragma and a Pseudo Comment (e.g. ##NEEDED / \"#EC NEEDED, ##NO_TEXT / \"#EC NOTEXT). Checks that only have a pseudo comment (such as \"#EC CI_SUBRC) are not affected. abap-smartfix.tokenOverrides takes precedence."
+        },
+        "abap-smartfix.abapRelease": {
+          "type": "string",
+          "default": "latest",
+          "examples": [
+            "latest",
+            "7.58",
+            "7.54",
+            "7.50",
+            "7.40"
+          ],
+          "markdownDescription": "ABAP release of the target system, like the release restriction of abap-cleaner. Below `7.54`, `ADD a TO b` is rewritten as `b = b + a` instead of `b += a`."
+        },
+        "abap-smartfix.subrcLookahead": {
+          "type": "number",
+          "default": 3,
+          "description": "Number of statements to look ahead when checking whether sy-subrc is evaluated (for SELECT … ENDSELECT, counted from after the ENDSELECT)."
+        },
+        "abap-smartfix.selectSingleCheck": {
+          "type": "string",
+          "enum": [
+            "certain",
+            "all"
+          ],
+          "default": "certain",
+          "enumDescriptions": [
+            "Only list SELECT SINGLE statements that clearly do not use the full primary key (no WHERE; OR / NOT / range comparisons / IN / LIKE / BETWEEN; dynamic conditions)",
+            "List every SELECT SINGLE (the primary key is unknown without DDIC, so expect many false positives)"
+          ],
+          "description": "How the select-single rule (\"#EC CI_NOORDER, SELECT SINGLE is possibly not unique) decides. With ABAP Development Tools for VS Code (abap-smartfix.ddic.enabled) the primary key is read from the table in the SAP system and missing key fields are reported. Otherwise, when the WHERE consists only of = conditions joined by AND, it is treated as the full primary key and not listed."
+        },
+        "abap-smartfix.ddic.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Read DDIC objects from the SAP system through ABAP Development Tools for VS Code (read-only): primary keys of tables in SELECT SINGLE and table types of VALUE parameters (\"#EC CI_VALPAR). Without that extension, a logged-on destination or the object, the rules decide from the source as before."
+        },
+        "abap-smartfix.ddic.destination": {
+          "type": "string",
+          "default": "",
+          "description": "ADT destination (e.g. DEV) for files that are not opened from ABAP Development Tools for VS Code. Files opened from it (abap:/repotree-v1/<destination>/…) always use their own destination."
+        },
+        "abap-smartfix.bufferedTables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "More buffered database tables (technical settings, which neither the source nor ADT for VS Code shows), e.g. [\"ZMY_TABLE\"]. A JOIN with a buffered table gets \"#EC CI_BUFFJOIN also without ATC. The tables ATC reports as buffered are remembered per system automatically; list only others here."
+        },
+        "abap-smartfix.preview.sideBySide": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the preview side by side: the original on the left, the fixed code on the right, also in a narrow window. Sets diffEditor.renderSideBySide to true and diffEditor.useInlineViewWhenSpaceIsLimited to false in your user settings when a preview opens. Turn off to keep your own diff settings."
+        },
+        "abap-smartfix.preview.onReveal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Clicking a finding in the sidebar opens the preview (original and fixed code together) when it is not open yet, and jumps to the line."
+        },
+        "abap-smartfix.atc.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use ATC results from ABAP Development Tools for VS Code (also in the sidebar … menu: Use ATC Results from ADT). When on (the default), every Analyze / Auto Fix / Preview / fix from the sidebar of an object opened from ADT first runs ATC in the SAP system (default check variant, the same as ADT's \"Run ABAP Test Cockpit\") and fixes what ATC reports: findings ATC does not report are hidden, ATC findings without a rule are listed as manual. ATC checks the saved version in the system, so a file with unsaved changes is saved first when you agree. When off, for files not opened from ADT or when ATC fails, findings are decided from the source."
+        },
+        "abap-smartfix.customRulesFile": {
+          "type": "string",
+          "default": ".abap-smartfix-rules.json",
+          "description": "Custom rules file in the workspace (relative to the workspace root)."
+        },
+        "abap-smartfix.promptIncludeSource": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include the source code with line numbers in the AI prompt."
+        }
+      }
+    }
+  }
+}

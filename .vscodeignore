@@ -1,0 +1,11 @@
+test/**
+samples/**
+tools/**
+.vscode/**
+**/.git/**
+.gitignore
+*.vsix
+*.xlsx
+DEVELOPMENT.md
+media/icon-source.svg
+media/demo.gif

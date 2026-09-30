@@ -1,0 +1,21 @@
+[
+  {
+    "id": "commit-work",
+    "kind": "pseudo",
+    "token": "\"#EC CI_COMMIT",
+    "title": "COMMIT WORK",
+    "why": "Team convention: COMMIT WORK must be annotated and reviewed. Adjust the token to the name your ATC actually uses.",
+    "match": "^COMMIT\\s+WORK\\b",
+    "severity": "warning",
+    "enabled": false
+  },
+  {
+    "id": "translate-upper",
+    "title": "TRANSLATE … TO UPPER CASE → to_upper( )",
+    "why": "Team convention: use the built-in function. replace is applied to the whole statement (without the period); $1 is the first group of match.",
+    "match": "^TRANSLATE\\s+(\\S+)\\s+TO\\s+UPPER\\s+CASE$",
+    "replace": "$1 = to_upper( $1 )",
+    "safety": "safe",
+    "enabled": false
+  }
+]
