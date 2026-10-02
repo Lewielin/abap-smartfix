@@ -26,6 +26,25 @@ const CATALOG = require('./sci-catalog');
 
 const { BUILTIN_RULES, RULE_BY_ID, hasSciClasses } = F;
 
+/** Name of an ATC check variant: up to 30 letters, digits and _, optionally in a /NAMESPACE/ */
+const CHECK_VARIANT = /^(?:\/[A-Z0-9_]+\/)?[A-Z0-9_]+$/;
+/** The setting value that stands for the system's default check variant (what ADT's "Run ABAP Test Cockpit" uses) */
+const DEFAULT_VARIANT = 'DEFAULT';
+
+/**
+ * The check variant of the setting abap-smartfix.atc.checkVariant.
+ * @returns {{ name: string, error: string }} name '' for the system's default (empty or DEFAULT), else the name in upper
+ *   case; error when the setting is not a check variant name
+ */
+function checkVariantOf(setting) {
+  const name = String(setting == null ? '' : setting).trim().toUpperCase();
+  if (!name || name === DEFAULT_VARIANT) return { name: '', error: '' };
+  if (name.length > 30 || !CHECK_VARIANT.test(name)) {
+    return { name: '', error: 'abap-smartfix.atc.checkVariant "' + String(setting).trim() + '" is not a check variant name' };
+  }
+  return { name, error: '' };
+}
+
 /** Check classes of one family report the same messages (…_DIA / _HANA, extended check variants) */
 function classFamily(name) {
   return String(name || '').toUpperCase().trim().replace(/_(?:DIA|HANA|BASE|SEC|VERS)$/, '');
@@ -535,4 +554,6 @@ function factsFrom(atcFindings) {
   return { buffered };
 }
 
-module.exports = { readAtcDiagnostics, matchAtc, applyAtc, trackChanges, classFamily, markerForAtc, classesLabel, factsFrom };
+module.exports = {
+  readAtcDiagnostics, matchAtc, applyAtc, trackChanges, classFamily, markerForAtc, classesLabel, factsFrom, checkVariantOf,
+};

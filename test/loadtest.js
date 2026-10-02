@@ -146,6 +146,9 @@ let adtInstalled = false;
 const adtDiagnostics = new Map();
 let atcResult = [];
 let atcRuns = 0;
+// ADT's check variant quick pick while it is open, and the names accepted in it
+let variantPick = null;
+const pickedVariants = [];
 
 const vscodeStub = {
   Position, Range, Selection, EventEmitter, TreeItem, ThemeIcon, MarkdownString,
@@ -203,6 +206,18 @@ const vscodeStub = {
       if (args[0] === 'adt-vscode.runAtcOnObject' && activeDoc) {
         atcRuns++;
         adtDiagnostics.set(activeDoc.uri.toString(), atcResult);
+      }
+      // "Run ABAP Test Cockpit With...": a quick pick that gets the pasted variant name and runs ATC once it is accepted
+      if (args[0] === 'adt-vscode.runAtcOnObjectWithVariant' && activeDoc) {
+        const doc = activeDoc;
+        return new Promise((resolve) => { variantPick = { value: '', accept: () => { atcRuns++; adtDiagnostics.set(doc.uri.toString(), atcResult); resolve(); } }; });
+      }
+      if (args[0] === 'editor.action.clipboardPasteAction' && variantPick) variantPick.value += vscodeStub.env.clipboard._text;
+      if (args[0] === 'workbench.action.acceptSelectedQuickOpenItem' && variantPick) {
+        const pick = variantPick;
+        variantPick = null;
+        pickedVariants.push(pick.value);
+        pick.accept();
       }
       return Promise.resolve();
     },
@@ -635,6 +650,42 @@ activeDoc = makeDoc(path.join(__dirname, '..', 'samples', 'demo.abap'));
   await registered.get('abap-smartfix.applyFindings')(joinDoc.uri, { all: true });
   const joinTexts = appliedEdit ? appliedEdit.inserts.map((i) => i.text).join('|') : '';
   check('without ATC the remembered buffered table gets "#EC CI_BUFFJOIN', /"#EC CI_BUFFJOIN/.test(joinTexts), joinTexts);
+
+  console.log('\n== ATC with a check variant (abap-smartfix.atc.checkVariant) ==');
+  settings['atc.enabled'] = true;
+  settings['atc.checkVariantDelay'] = 500;
+  atcResult = [adtDiag(4, 'SEL_UP_TO', 'SELECT .. UP TO .. ROWS without ORDER BY found')];
+  const clip = { _text: 'user clipboard', readText: () => Promise.resolve(clip._text), writeText: (t) => { clip._text = t; return Promise.resolve(); } };
+  const savedEnv = vscodeStub.env;
+  vscodeStub.env = { clipboard: clip };
+  const variantRun = async (setting) => {
+    settings['atc.checkVariant'] = setting;
+    activeDoc = atcDoc;
+    atcRuns = 0;
+    executed.length = 0;
+    await registered.get('abap-smartfix.scanFile')();
+    return executed.map((a) => a[0]);
+  };
+  // A new document version, so the result of the runs above does not count
+  atcDoc.version++;
+  let cmds = await variantRun('z_team_variant');
+  check('variant set: ADT "Run ABAP Test Cockpit With..." is run, not the default command',
+    cmds.includes('adt-vscode.runAtcOnObjectWithVariant') && !cmds.includes('adt-vscode.runAtcOnObject'), cmds.join());
+  check('variant set: the name is filled in (upper case) and accepted', pickedVariants.join() === 'Z_TEAM_VARIANT', pickedVariants.join());
+  check('variant set: the clipboard text is put back', clip._text === 'user clipboard', clip._text);
+  const varNodes = view.provider.getChildren(view.provider.getChildren()[0]);
+  check('variant set: the ATC result is used', atcRuns === 1 && varNodes.some((n) => /^L4 {2}"#EC CI_NOORDER/.test(n.label)), varNodes.map((n) => n.label).join());
+  await variantRun('Z_TEAM_VARIANT');
+  check('same variant, unchanged file: ATC is not run again', atcRuns === 0, String(atcRuns));
+  cmds = await variantRun('DEFAULT');
+  check('back to DEFAULT: the result of another variant does not count, the default command runs again',
+    atcRuns === 1 && cmds.includes('adt-vscode.runAtcOnObject') && !cmds.includes('adt-vscode.runAtcOnObjectWithVariant'), cmds.join());
+  cmds = await variantRun('Z BAD*');
+  check('not a variant name: ATC is not run', atcRuns === 0 && !cmds.some((c) => /^adt-vscode\./.test(c)), cmds.join());
+  vscodeStub.env = savedEnv;
+  delete settings['atc.checkVariant'];
+  delete settings['atc.checkVariantDelay'];
+  settings['atc.enabled'] = false;
   adtInstalled = false;
   delete settings['atc.enabled'];
 

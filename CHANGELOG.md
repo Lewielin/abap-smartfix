@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.2
+
+- **Choose the ATC check variant** with the new setting `abap-smartfix.atc.checkVariant`, or from the sidebar … menu with
+  Select ATC Check Variant…. The default `DEFAULT` runs ATC with the system's default check variant, as before.
+- With another variant, ABAP Development Tools' "Run ABAP Test Cockpit With..." runs and the variant is picked
+  automatically. The name is pasted into its list through the clipboard, and your clipboard text is put back afterwards. If
+  the variant cannot be picked, the list stays open with the name filled in, so you can pick it by hand.
+- `abap-smartfix.atc.checkVariantDelay` (default 2000 ms) sets how long the list gets to find the variant. Raise it on a slow
+  system.
+- The sidebar title and the status bar show the check variant when it is not `DEFAULT`.
+- After the variant changes, the next Analyze runs ATC again: a result of another variant is not reused.
+
 ## 1.5.1
 
 - **Renamed to SmartFix for ABAP.** Commands, settings (`abap-smartfix.*`) and the extension id stay the same.

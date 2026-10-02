@@ -45,6 +45,7 @@ One `Ctrl+Z` undoes a whole fix. Files are not saved automatically. After fixing
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `abap-smartfix.atc.enabled` | `true` | Run ATC in the SAP system and fix what it reports |
+| `abap-smartfix.atc.checkVariant` | `DEFAULT` | ATC check variant; `DEFAULT` is the system's default |
 | `abap-smartfix.fixMode` | `auto` | `auto`, `rewrite` (also rewrites that need review) or `suppress` (annotations only) |
 | `abap-smartfix.suppressStyle` | `rule` | Prefer `pragma` or `pseudo` comments |
 | `abap-smartfix.disabledRules` | `[]` | Rules to turn off |
