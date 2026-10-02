@@ -153,11 +153,29 @@ const ATC_TIMEOUT_MS = 180000;
 const SAVE_AND_RUN = 'Save and Run ATC';
 /** Per document: the version whose "save and run ATC" was declined, so it is not asked again for it */
 const saveDeclined = new Map();
+/** Picking a check variant in ADT's quick pick (runAtcWithVariant): time for it to open, for the paste, accept retries */
+const VARIANT_OPEN_MS = 800;
+const VARIANT_PASTE_MS = 300;
+const VARIANT_ACCEPT_TRIES = 3;
+const VARIANT_RETRY_MS = 1000;
 
 /** abap-smartfix.atc.enabled: whether ATC results from ADT are used (uri: the document's scope, or the global setting) */
 function atcSwitchedOn(uri) {
   return cfg(uri).get('atc.enabled', true);
 }
+
+/** abap-smartfix.atc.checkVariant: { name, error }, name '' for the system's default check variant (atc.js) */
+function atcVariant(uri) {
+  return Atc.checkVariantOf(cfg(uri).get('atc.checkVariant', 'DEFAULT'));
+}
+
+/** abap-smartfix.atc.checkVariantDelay: ms the variant search in ADT's quick pick is given before the first match is taken */
+function atcVariantDelay(uri) {
+  const ms = Number(cfg(uri).get('atc.checkVariantDelay', 2000));
+  return Number.isFinite(ms) ? Math.min(Math.max(ms, 500), 30000) : 2000;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function atcEnabled(doc) {
   return !atcOffReason(doc);
@@ -215,8 +233,9 @@ function analyzeDoc(doc, opts) {
 
 /**
  * Run ATC on the document in the SAP system through ABAP Development Tools for VS Code (the same as its "Run ATC" command,
- * with the system's default check variant) and remember which findings ATC confirms. Only for saved objects opened from ADT;
- * when ATC cannot be run, fails, times out or reports nothing, the findings are decided from the source as before.
+ * with the system's default check variant or the one of abap-smartfix.atc.checkVariant) and remember which findings ATC
+ * confirms. Only for saved objects opened from ADT; when ATC cannot be run, fails, times out or reports nothing, the
+ * findings are decided from the source as before.
  * @returns {Promise<boolean>} whether an ATC result is in use for this version
  */
 async function runAtc(doc) {
@@ -229,7 +248,15 @@ async function runAtc(doc) {
     return false;
   }
   const known = atcState.get(key);
-  if (known && known.version === doc.version) {
+  const variant = atcVariant(doc.uri);
+  if (variant.error) {
+    log('ATC not run: ' + variant.error + '; findings are decided from the source.');
+    vscode.window.showWarningMessage('SmartFix for ABAP: ' + variant.error + '. ATC was not run; fix the setting or set it to DEFAULT.');
+    return !!known;
+  }
+  // A result of another check variant does not count: the variant decides which checks run
+  const current = () => known && known.version === doc.version && known.variant === variant.name;
+  if (current()) {
     log('ATC: using the result of the last ATC run for ' + doc.fileName + ' (unchanged since).');
     return true;
   }
@@ -247,7 +274,7 @@ async function runAtc(doc) {
       log('ATC not run: ' + doc.fileName + ' has unsaved changes; the last ATC result stays in use.');
       return !!known;
     }
-    if (known && known.version === doc.version) return true;
+    if (current()) return true;
   }
   const version = doc.version;
   // ADT runs ATC on the active editor, so the file comes to the front; an open diff preview is brought back afterwards
@@ -256,11 +283,18 @@ async function runAtc(doc) {
   try {
     const active = vscode.window.activeTextEditor;
     if (!active || active.document.uri.toString() !== key) await vscode.window.showTextDocument(doc, { preview: false });
+    if (variant.name) log('ATC: running with check variant ' + variant.name + ' on ' + doc.fileName + '.');
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'SmartFix for ABAP: running ATC in the SAP system…' },
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'SmartFix for ABAP: running ATC' + (variant.name ? ' (check variant ' + variant.name + ')' : '') + ' in the SAP system…',
+      },
       () => new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('timeout after ' + ATC_TIMEOUT_MS / 1000 + ' s')), ATC_TIMEOUT_MS);
-        Promise.resolve(vscode.commands.executeCommand('adt-vscode.runAtcOnObject')).then(
+        const run = variant.name
+          ? runAtcWithVariant(doc, variant.name, atcVariantDelay(doc.uri))
+          : vscode.commands.executeCommand('adt-vscode.runAtcOnObject');
+        Promise.resolve(run).then(
           (v) => { clearTimeout(timer); resolve(v); },
           (e) => { clearTimeout(timer); reject(e); });
       })
@@ -279,7 +313,7 @@ async function runAtc(doc) {
   if (!findings.length) log('ATC reported no findings for ' + doc.fileName + '.');
   const result = analyzeText(doc, readOptions(doc.uri));
   const m = Atc.matchAtc(result, findings);
-  atcState.set(key, Object.assign({ version }, m));
+  atcState.set(key, Object.assign({ version, variant: variant.name }, m));
   log('ATC: ' + findings.length + ' findings in ' + doc.fileName + ': ' + m.confirmed.size + ' matched, ' +
     m.unconfirmed.size + ' SmartFix for ABAP findings not reported by ATC hidden, ' + m.unmatched.length + ' without a rule (manual).');
   for (const u of m.unmatched) {
@@ -287,6 +321,49 @@ async function runAtc(doc) {
     log('  ATC without a rule: line ' + (u.atc.line + 1) + ' ' + cls + ' ' + u.atc.messageId + ' "' + u.atc.message + '"');
   }
   return true;
+}
+
+/**
+ * Run ATC with a check variant. ADT's "Run ABAP Test Cockpit With..." takes no arguments: it asks for the variant in a quick
+ * pick that searches the system as you type. VS Code has no command that types into a quick pick, so the name is pasted
+ * through the clipboard (its text is put back afterwards) and the first match is accepted once the search had delayMs to
+ * answer, a few more times while nothing matched yet. When that does not work the quick pick stays open with the name
+ * filled in, to pick by hand.
+ * @returns {Promise} settles when ADT's command has finished
+ */
+function runAtcWithVariant(doc, name, delayMs) {
+  let done = false;
+  const run = Promise.resolve(vscode.commands.executeCommand('adt-vscode.runAtcOnObjectWithVariant'));
+  run.then(() => { done = true; }, () => { done = true; });
+  pickAtcVariant(doc, name, delayMs, () => done).catch((e) =>
+    log('ATC: check variant ' + name + ' could not be picked (' + (e && e.message ? e.message : e) + '); pick it in the open list.'));
+  return run;
+}
+
+async function pickAtcVariant(doc, name, delayMs, done) {
+  await sleep(VARIANT_OPEN_MS);
+  if (done()) return;
+  const version = doc.version;
+  const saved = await vscode.env.clipboard.readText();
+  try {
+    await vscode.env.clipboard.writeText(name);
+    await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
+    // The paste reads the clipboard after the command returns
+    await sleep(VARIANT_PASTE_MS);
+  } finally {
+    await vscode.env.clipboard.writeText(saved);
+  }
+  if (doc.version !== version) {
+    // The quick pick had not taken the focus: the name went into the code. Take it out again and leave the pick to the user
+    await vscode.commands.executeCommand('undo');
+    throw new Error('the quick pick of ADT did not open in time');
+  }
+  await sleep(delayMs);
+  for (let i = 0; i < VARIANT_ACCEPT_TRIES && !done(); i++) {
+    if (i) await sleep(VARIANT_RETRY_MS);
+    // Accepts ADT's quick pick while it is open; once it is closed this does nothing
+    await vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem');
+  }
 }
 
 /**
@@ -402,17 +479,36 @@ function updateStatusBar() {
     return;
   }
   const atcOn = atcSwitchedOn();
-  statusBar.text = '$(wand) SmartFix for ABAP ' + total + (atcOn ? ' · ATC $(check)' : '');
+  const variant = atcVariant().name;
+  statusBar.text = '$(wand) SmartFix for ABAP ' + total + (atcOn ? ' · ATC $(check)' + (variant ? ' ' + variant : '') : '');
   statusBar.tooltip = total + ' finding' + (total === 1 ? '' : 's') + ' (code rewrites or Pragma / Pseudo Comment). ' +
-    (atcOn ? 'ATC results from ADT: on. ' : 'ATC results from ADT: off (decided from the source). ') + 'Click to show the list.';
+    (atcOn ? 'ATC results from ADT: on (check variant ' + (variant || 'DEFAULT') + '). ' : 'ATC results from ADT: off (decided from the source). ') +
+    'Click to show the list.';
   statusBar.show();
 }
 
 /** Show whether ATC results from ADT are used: sidebar title and status bar */
 function showAtcState() {
   const on = atcSwitchedOn();
-  if (findingsView) findingsView.description = on ? 'ATC: On' : '';
+  const variant = atcVariant().name;
+  if (findingsView) findingsView.description = on ? 'ATC: On' + (variant ? ' (' + variant + ')' : '') : '';
   updateStatusBar();
+}
+
+/** Ask for the ATC check variant (abap-smartfix.atc.checkVariant); DEFAULT is the system's default check variant */
+async function selectAtcVariant() {
+  const value = await vscode.window.showInputBox({
+    title: 'SmartFix for ABAP: ATC Check Variant',
+    prompt: 'Check variant ATC runs with. DEFAULT (or empty) uses the system\'s default check variant, as ADT\'s "Run ABAP Test Cockpit".',
+    value: cfg().get('atc.checkVariant', 'DEFAULT') || 'DEFAULT',
+    validateInput: (v) => Atc.checkVariantOf(v).error || null,
+  });
+  if (value === undefined) return;
+  const name = Atc.checkVariantOf(value).name || 'DEFAULT';
+  await cfg().update('atc.checkVariant', name, vscode.ConfigurationTarget.Global);
+  showAtcState();
+  vscode.window.showInformationMessage('SmartFix for ABAP: ATC check variant ' + name +
+    '. Takes effect the next time you run Analyze / Auto Fix / Preview.');
 }
 
 /** Turn the use of ATC results on or off; the findings shown stay until the next Analyze */
@@ -1426,6 +1522,7 @@ function activate(context) {
     vscode.commands.registerCommand('abap-smartfix.toggleAtc', () => setAtc(!atcSwitchedOn())),
     vscode.commands.registerCommand('abap-smartfix.atcOn', () => setAtc(true)),
     vscode.commands.registerCommand('abap-smartfix.atcOff', () => setAtc(false)),
+    vscode.commands.registerCommand('abap-smartfix.selectAtcVariant', selectAtcVariant),
 
     vscode.commands.registerCommand('abap-smartfix.clearDdicCache', () => {
       DdicAdt.clearCache();
@@ -1464,6 +1561,11 @@ function activate(context) {
       if (!e.affectsConfiguration('abap-smartfix')) return;
       // Switching ATC on / off only takes effect with the next Analyze
       if (e.affectsConfiguration('abap-smartfix.atc.enabled')) {
+        showAtcState();
+        return;
+      }
+      // So does the check variant; the findings do not change before ATC runs again
+      if (e.affectsConfiguration('abap-smartfix.atc.checkVariant') || e.affectsConfiguration('abap-smartfix.atc.checkVariantDelay')) {
         showAtcState();
         return;
       }

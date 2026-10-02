@@ -2,7 +2,7 @@
   "name": "abap-smartfix",
   "displayName": "SmartFix for ABAP",
   "description": "Auto Fix ATC Findings, Pragmas and Modern Syntax for SAP ABAP",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "publisher": "Lewie-Lin",
   "license": "MIT",
   "repository": {
@@ -199,6 +199,11 @@
         "category": "SmartFix for ABAP"
       },
       {
+        "command": "abap-smartfix.selectAtcVariant",
+        "title": "Select ATC Check Variant…",
+        "category": "SmartFix for ABAP"
+      },
+      {
         "command": "abap-smartfix.atcOn",
         "title": "ATC from ADT: Off (click to use ATC results)",
         "category": "SmartFix for ABAP",
@@ -320,6 +325,11 @@
           "when": "view == 'abap-smartfix.findings'",
           "group": "3_atc@1",
           "toggled": "config.abap-smartfix.atc.enabled"
+        },
+        {
+          "command": "abap-smartfix.selectAtcVariant",
+          "when": "view == 'abap-smartfix.findings'",
+          "group": "3_atc@2"
         },
         {
           "command": "abap-smartfix.atcOff",
@@ -530,7 +540,19 @@
         "abap-smartfix.atc.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Use ATC results from ABAP Development Tools for VS Code (also in the sidebar … menu: Use ATC Results from ADT). When on (the default), every Analyze / Auto Fix / Preview / fix from the sidebar of an object opened from ADT first runs ATC in the SAP system (default check variant, the same as ADT's \"Run ABAP Test Cockpit\") and fixes what ATC reports: findings ATC does not report are hidden, ATC findings without a rule are listed as manual. ATC checks the saved version in the system, so a file with unsaved changes is saved first when you agree. When off, for files not opened from ADT or when ATC fails, findings are decided from the source."
+          "description": "Use ATC results from ABAP Development Tools for VS Code (also in the sidebar … menu: Use ATC Results from ADT). When on (the default), every Analyze / Auto Fix / Preview / fix from the sidebar of an object opened from ADT first runs ATC in the SAP system (check variant of abap-smartfix.atc.checkVariant; by default the system's default, the same as ADT's \"Run ABAP Test Cockpit\") and fixes what ATC reports: findings ATC does not report are hidden, ATC findings without a rule are listed as manual. ATC checks the saved version in the system, so a file with unsaved changes is saved first when you agree. When off, for files not opened from ADT or when ATC fails, findings are decided from the source."
+        },
+        "abap-smartfix.atc.checkVariant": {
+          "type": "string",
+          "default": "DEFAULT",
+          "description": "ATC check variant (also in the sidebar … menu: Select ATC Check Variant…). DEFAULT (or empty) runs ADT's \"Run ABAP Test Cockpit\" with the system's default check variant, as before. Another name runs ADT's \"Run ABAP Test Cockpit With...\": its variant list opens, the name is pasted into it through the clipboard (the clipboard text is put back afterwards) and the first match is taken. If that does not work, the list stays open with the name filled in to pick by hand."
+        },
+        "abap-smartfix.atc.checkVariantDelay": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 500,
+          "maximum": 30000,
+          "description": "Milliseconds the variant list of ADT is given to find abap-smartfix.atc.checkVariant before the first match is taken. Raise it when the list is still empty at that time (slow system)."
         },
         "abap-smartfix.customRulesFile": {
           "type": "string",

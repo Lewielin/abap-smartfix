@@ -563,5 +563,14 @@ check('"program does not exist" of any check class: exemption', adtMarker('0001'
 check('a message text such as "&1" does not stand for an unknown message',
   adtMarker('XYZ', 'Nested SELECT: result of statement at MAIN line 12 used in WHERE') === '');
 
+{
+  const v = Atc.checkVariantOf;
+  check('check variant: DEFAULT, empty or unset is the system default (as before)',
+    v('DEFAULT').name === '' && v(' default ').name === '' && v('').name === '' && v(undefined).name === '' && !v('DEFAULT').error);
+  check('check variant: a name is trimmed and in upper case', v(' z_my_variant ').name === 'Z_MY_VARIANT' && !v('z_my_variant').error);
+  check('check variant: a /NAMESPACE/ name is a name', v('/abc/var').name === '/ABC/VAR');
+  check('check variant: not a name → error, not run', !!v('Z VAR').error && !!v('Z*').error && !!v('A'.repeat(31)).error && v('Z VAR').name === '');
+}
+
 console.log('\n' + (failed === 0 ? 'ALL PASS' : failed + ' FAILED'));
 process.exit(failed === 0 ? 0 : 1);
