@@ -2,7 +2,7 @@
   "name": "abap-smartfix",
   "displayName": "SmartFix for ABAP",
   "description": "Auto Fix ATC Findings, Pragmas and Modern Syntax for SAP ABAP",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "publisher": "Lewie-Lin",
   "license": "MIT",
   "repository": {
@@ -526,6 +526,11 @@
           },
           "default": [],
           "description": "More buffered database tables (technical settings, which neither the source nor ADT for VS Code shows), e.g. [\"ZMY_TABLE\"]. A JOIN with a buffered table gets \"#EC CI_BUFFJOIN also without ATC. The tables ATC reports as buffered are remembered per system automatically; list only others here."
+        },
+        "abap-smartfix.hover": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hovering over a statement with findings shows why it is reported and how it can be fixed (files that were analyzed only)."
         },
         "abap-smartfix.preview.sideBySide": {
           "type": "boolean",

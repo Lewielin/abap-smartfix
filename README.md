@@ -38,6 +38,8 @@ Files not opened from ADT, such as abapGit `.abap` files, are checked from the s
 | Fix some lines | Select them, right-click, Fix Findings in Selection… |
 | Ask an AI assistant | Copy AI Prompt |
 
+Hover over a reported line to see why it is reported and how it can be fixed (`abap-smartfix.hover` turns this off).
+
 One `Ctrl+Z` undoes a whole fix. Files are not saved automatically. After fixing, save and run ATC again to confirm.
 
 ## Settings

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.3
+
+- **Hover**: hover over a reported line to see why it is reported and how it can be fixed. Turn it off with
+  `abap-smartfix.hover`.
+
 ## 1.5.2
 
 - **Choose the ATC check variant** with the new setting `abap-smartfix.atc.checkVariant`, or from the sidebar … menu with

@@ -5,7 +5,7 @@ const path = require('path');
 const vscode = require('vscode');
 
 const { analyze, describeRules } = require('./analyzer');
-const { planEdits, applyEditsToText } = require('./fixer');
+const { planEdits } = require('./fixer');
 const { verifyRewrites, downgradeRejected } = require('./verify');
 const { learnAnnotations } = require('./learn');
 const { buildAiPrompt, buildReport } = require('./report');
@@ -14,6 +14,9 @@ const { Selection } = require('./selection');
 const { ddicRequests } = require('./ddic');
 const DdicAdt = require('./ddic-adt');
 const Atc = require('./atc');
+const { AtcRunner, SAVE_AND_RUN } = require('./atc-runner');
+const { Preview, PREVIEW_SCHEME } = require('./preview');
+const { FindingHoverProvider } = require('./hover');
 
 /** @type {Map<string, {uri: vscode.Uri, version: number, result: object}>} */
 const store = new Map();
@@ -102,40 +105,8 @@ function readOptions(uri) {
     selectSingleCheck: conf.get('selectSingleCheck', 'certain'),
     customRules: loadCustomRules(uri),
     ddic: DdicAdt.viewFor(ddicDestination(uri)),
-    bufferedTables: bufferedTables(uri),
+    bufferedTables: atc.bufferedTables(uri),
   };
-}
-
-// ---------------------------------------------------------------- what ATC told about the system
-
-const FACTS_KEY = 'abap-smartfix.atcFacts';
-let extContext = null;
-
-/** Destination of a document for remembered ATC facts: its ADT destination, or the configured one */
-function factsDestination(uri) {
-  return String(DdicAdt.destinationOf(uri, cfg(uri).get('ddic.destination', '')) || '').toUpperCase();
-}
-
-/** Buffered tables: the ones ATC reported for this system, plus abap-smartfix.bufferedTables (upper case, sorted) */
-function bufferedTables(uri) {
-  const own = cfg(uri).get('bufferedTables', []) || [];
-  const facts = extContext && extContext.globalState ? extContext.globalState.get(FACTS_KEY, {}) : {};
-  const learned = Object.keys(((facts[factsDestination(uri)] || {}).buffered) || {});
-  return [...new Set(own.concat(learned).map((t) => String(t).toUpperCase()))].sort();
-}
-
-/** Remember the buffered tables an ATC run reported, so the source rules know them without ATC */
-async function rememberFacts(doc, findings) {
-  const dest = factsDestination(doc.uri);
-  if (!extContext || !extContext.globalState || !dest) return;
-  const found = Atc.factsFrom(findings).buffered;
-  const facts = extContext.globalState.get(FACTS_KEY, {});
-  const mine = Object.assign({ buffered: {} }, facts[dest]);
-  const added = Object.keys(found).filter((t) => mine.buffered[t] !== found[t]);
-  if (!added.length) return;
-  mine.buffered = Object.assign({}, mine.buffered, found);
-  await extContext.globalState.update(FACTS_KEY, Object.assign({}, facts, { [dest]: mine }));
-  log('ATC: remembered buffered tables of ' + dest + ': ' + added.map((t) => t + ' (' + found[t] + ')').join(', '));
 }
 
 /** ADT destination whose DDIC is used for this document, or '' (DDIC lookups off or no destination) */
@@ -145,57 +116,10 @@ function ddicDestination(uri) {
   return DdicAdt.destinationOf(uri, conf.get('ddic.destination', ''));
 }
 
-// ---------------------------------------------------------------- ATC from the SAP system
+// ---------------------------------------------------------------- ATC from the SAP system (atc-runner.js)
 
-/** Per document: the match of the last ATC run { version, confirmed, unconfirmed, unmatched } (atc.js) */
-const atcState = new Map();
-const ATC_TIMEOUT_MS = 180000;
-const SAVE_AND_RUN = 'Save and Run ATC';
-/** Per document: the version whose "save and run ATC" was declined, so it is not asked again for it */
-const saveDeclined = new Map();
-/** Picking a check variant in ADT's quick pick (runAtcWithVariant): time for it to open, for the paste, accept retries */
-const VARIANT_OPEN_MS = 800;
-const VARIANT_PASTE_MS = 300;
-const VARIANT_ACCEPT_TRIES = 3;
-const VARIANT_RETRY_MS = 1000;
-
-/** abap-smartfix.atc.enabled: whether ATC results from ADT are used (uri: the document's scope, or the global setting) */
-function atcSwitchedOn(uri) {
-  return cfg(uri).get('atc.enabled', true);
-}
-
-/** abap-smartfix.atc.checkVariant: { name, error }, name '' for the system's default check variant (atc.js) */
-function atcVariant(uri) {
-  return Atc.checkVariantOf(cfg(uri).get('atc.checkVariant', 'DEFAULT'));
-}
-
-/** abap-smartfix.atc.checkVariantDelay: ms the variant search in ADT's quick pick is given before the first match is taken */
-function atcVariantDelay(uri) {
-  const ms = Number(cfg(uri).get('atc.checkVariantDelay', 2000));
-  return Number.isFinite(ms) ? Math.min(Math.max(ms, 500), 30000) : 2000;
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function atcEnabled(doc) {
-  return !atcOffReason(doc);
-}
-
-/** Why ATC results cannot be used for this document, or '' when they can */
-function atcOffReason(doc) {
-  if (!atcSwitchedOn(doc.uri)) return 'ATC results from ADT are switched off';
-  if (doc.uri.scheme !== 'abap') return doc.fileName + ' is not opened from ABAP Development Tools (scheme ' + doc.uri.scheme + ')';
-  if (!vscode.extensions.getExtension('sapse.adt-vscode')) return 'ABAP Development Tools for VS Code is not installed';
-  return '';
-}
-
-/**
- * Before a fix from the sidebar, a selection or the whole workspace: run ATC first when it is switched on, so the fix
- * uses what ATC reports (as Analyze / Auto Fix do). With ATC off the last ATC result of an Analyze stays in use.
- */
-async function ensureAtc(doc) {
-  if (atcSwitchedOn(doc.uri)) await runAtc(doc);
-}
+/** @type {AtcRunner} */
+let atc;
 
 /**
  * Analysis of the document text, analyzed once per version and options: a large program takes seconds, and one command
@@ -224,146 +148,7 @@ function analyzeText(doc, opts) {
 
 /** Analyze a document and apply the last ATC result of it (if any) */
 function analyzeDoc(doc, opts) {
-  const result = analyzeText(doc, opts);
-  const state = atcState.get(doc.uri.toString());
-  // The ATC result of the last explicit Analyze stays in use until the next one (also after switching ATC off)
-  if (state) Atc.applyAtc(result, state, state.version === doc.version, opts);
-  return result;
-}
-
-/**
- * Run ATC on the document in the SAP system through ABAP Development Tools for VS Code (the same as its "Run ATC" command,
- * with the system's default check variant or the one of abap-smartfix.atc.checkVariant) and remember which findings ATC
- * confirms. Only for saved objects opened from ADT; when ATC cannot be run, fails, times out or reports nothing, the
- * findings are decided from the source as before.
- * @returns {Promise<boolean>} whether an ATC result is in use for this version
- */
-async function runAtc(doc) {
-  const key = doc.uri.toString();
-  const off = atcOffReason(doc);
-  if (off) {
-    // Analyze with ATC switched off: back to the findings of the source
-    if (atcSwitchedOn(doc.uri)) log('ATC not run: ' + off + '; findings are decided from the source.');
-    atcState.delete(key);
-    return false;
-  }
-  const known = atcState.get(key);
-  const variant = atcVariant(doc.uri);
-  if (variant.error) {
-    log('ATC not run: ' + variant.error + '; findings are decided from the source.');
-    vscode.window.showWarningMessage('SmartFix for ABAP: ' + variant.error + '. ATC was not run; fix the setting or set it to DEFAULT.');
-    return !!known;
-  }
-  // A result of another check variant does not count: the variant decides which checks run
-  const current = () => known && known.version === doc.version && known.variant === variant.name;
-  if (current()) {
-    log('ATC: using the result of the last ATC run for ' + doc.fileName + ' (unchanged since).');
-    return true;
-  }
-  if (doc.isDirty) {
-    // ATC checks the version in the system: after a fix, save it first so ATC checks the fixed code (nothing is discarded).
-    // Asked once per version: one command calls this more than once
-    if (saveDeclined.get(key) === doc.version) return !!known;
-    const pick = await vscode.window.showInformationMessage(
-      'SmartFix for ABAP: ' + path.basename(doc.fileName) + ' has unsaved changes. ATC checks the version in the SAP system; ' +
-        'save the file and run ATC on it?',
-      SAVE_AND_RUN, 'Not Now'
-    );
-    if (pick !== SAVE_AND_RUN || !(await doc.save()) || doc.isDirty) {
-      saveDeclined.set(key, doc.version);
-      log('ATC not run: ' + doc.fileName + ' has unsaved changes; the last ATC result stays in use.');
-      return !!known;
-    }
-    if (current()) return true;
-  }
-  const version = doc.version;
-  // ADT runs ATC on the active editor, so the file comes to the front; an open diff preview is brought back afterwards
-  const diff = findPreviewTab(key);
-  const diffWasActive = !!(diff && diff.isActive);
-  try {
-    const active = vscode.window.activeTextEditor;
-    if (!active || active.document.uri.toString() !== key) await vscode.window.showTextDocument(doc, { preview: false });
-    if (variant.name) log('ATC: running with check variant ' + variant.name + ' on ' + doc.fileName + '.');
-    await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'SmartFix for ABAP: running ATC' + (variant.name ? ' (check variant ' + variant.name + ')' : '') + ' in the SAP system…',
-      },
-      () => new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('timeout after ' + ATC_TIMEOUT_MS / 1000 + ' s')), ATC_TIMEOUT_MS);
-        const run = variant.name
-          ? runAtcWithVariant(doc, variant.name, atcVariantDelay(doc.uri))
-          : vscode.commands.executeCommand('adt-vscode.runAtcOnObject');
-        Promise.resolve(run).then(
-          (v) => { clearTimeout(timer); resolve(v); },
-          (e) => { clearTimeout(timer); reject(e); });
-      })
-    );
-  } catch (e) {
-    log('ATC could not be run (' + (e && e.message ? e.message : e) + '); findings are decided from the source.');
-    return !!known;
-  } finally {
-    if (diffWasActive) await showPreviewDiff(key);
-  }
-  if (doc.version !== version) return !!known;
-  const findings = Atc.readAtcDiagnostics(vscode.languages.getDiagnostics(doc.uri));
-  await rememberFacts(doc, findings);
-  // No findings: ATC found nothing in this version. That is a result too: findings of the checks ATC runs are hidden,
-  // and this version is not checked again by the next command
-  if (!findings.length) log('ATC reported no findings for ' + doc.fileName + '.');
-  const result = analyzeText(doc, readOptions(doc.uri));
-  const m = Atc.matchAtc(result, findings);
-  atcState.set(key, Object.assign({ version, variant: variant.name }, m));
-  log('ATC: ' + findings.length + ' findings in ' + doc.fileName + ': ' + m.confirmed.size + ' matched, ' +
-    m.unconfirmed.size + ' SmartFix for ABAP findings not reported by ATC hidden, ' + m.unmatched.length + ' without a rule (manual).');
-  for (const u of m.unmatched) {
-    const cls = u.atc.checkClass || '(' + Atc.classesLabel(u.atc.classes || []) + ')';
-    log('  ATC without a rule: line ' + (u.atc.line + 1) + ' ' + cls + ' ' + u.atc.messageId + ' "' + u.atc.message + '"');
-  }
-  return true;
-}
-
-/**
- * Run ATC with a check variant. ADT's "Run ABAP Test Cockpit With..." takes no arguments: it asks for the variant in a quick
- * pick that searches the system as you type. VS Code has no command that types into a quick pick, so the name is pasted
- * through the clipboard (its text is put back afterwards) and the first match is accepted once the search had delayMs to
- * answer, a few more times while nothing matched yet. When that does not work the quick pick stays open with the name
- * filled in, to pick by hand.
- * @returns {Promise} settles when ADT's command has finished
- */
-function runAtcWithVariant(doc, name, delayMs) {
-  let done = false;
-  const run = Promise.resolve(vscode.commands.executeCommand('adt-vscode.runAtcOnObjectWithVariant'));
-  run.then(() => { done = true; }, () => { done = true; });
-  pickAtcVariant(doc, name, delayMs, () => done).catch((e) =>
-    log('ATC: check variant ' + name + ' could not be picked (' + (e && e.message ? e.message : e) + '); pick it in the open list.'));
-  return run;
-}
-
-async function pickAtcVariant(doc, name, delayMs, done) {
-  await sleep(VARIANT_OPEN_MS);
-  if (done()) return;
-  const version = doc.version;
-  const saved = await vscode.env.clipboard.readText();
-  try {
-    await vscode.env.clipboard.writeText(name);
-    await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
-    // The paste reads the clipboard after the command returns
-    await sleep(VARIANT_PASTE_MS);
-  } finally {
-    await vscode.env.clipboard.writeText(saved);
-  }
-  if (doc.version !== version) {
-    // The quick pick had not taken the focus: the name went into the code. Take it out again and leave the pick to the user
-    await vscode.commands.executeCommand('undo');
-    throw new Error('the quick pick of ADT did not open in time');
-  }
-  await sleep(delayMs);
-  for (let i = 0; i < VARIANT_ACCEPT_TRIES && !done(); i++) {
-    if (i) await sleep(VARIANT_RETRY_MS);
-    // Accepts ADT's quick pick while it is open; once it is closed this does nothing
-    await vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem');
-  }
+  return atc.applyTo(analyzeText(doc, opts), doc, opts);
 }
 
 /**
@@ -434,7 +219,7 @@ function scanDocument(doc) {
   if (result.findings.length) store.set(key, { uri: doc.uri, version: doc.version, result });
   else store.delete(key);
   selection.prune(key, result.findings);
-  refreshPreviews(doc);
+  preview.refresh(doc);
 
   const severityName = cfg(doc.uri).get('diagnosticSeverity', 'information');
   const forced = severityName === 'auto' ? null : SEVERITY[severityName];
@@ -478,8 +263,8 @@ function updateStatusBar() {
     statusBar.hide();
     return;
   }
-  const atcOn = atcSwitchedOn();
-  const variant = atcVariant().name;
+  const atcOn = atc.switchedOn();
+  const variant = atc.variant().name;
   statusBar.text = '$(wand) SmartFix for ABAP ' + total + (atcOn ? ' · ATC $(check)' + (variant ? ' ' + variant : '') : '');
   statusBar.tooltip = total + ' finding' + (total === 1 ? '' : 's') + ' (code rewrites or Pragma / Pseudo Comment). ' +
     (atcOn ? 'ATC results from ADT: on (check variant ' + (variant || 'DEFAULT') + '). ' : 'ATC results from ADT: off (decided from the source). ') +
@@ -489,8 +274,8 @@ function updateStatusBar() {
 
 /** Show whether ATC results from ADT are used: sidebar title and status bar */
 function showAtcState() {
-  const on = atcSwitchedOn();
-  const variant = atcVariant().name;
+  const on = atc.switchedOn();
+  const variant = atc.variant().name;
   if (findingsView) findingsView.description = on ? 'ATC: On' + (variant ? ' (' + variant + ')' : '') : '';
   updateStatusBar();
 }
@@ -532,8 +317,7 @@ function clearAll() {
 /** Stop analyzing the file while typing */
 function untrack(key) {
   tracked.delete(key);
-  atcState.delete(key);
-  saveDeclined.delete(key);
+  atc.forget(key);
   analysisCache.delete(key);
   lastAnalysisMs.delete(key);
   clearTimeout(typingTimers.get(key));
@@ -545,11 +329,7 @@ function onDocumentChanged(e) {
   const doc = e.document;
   const key = doc.uri.toString();
   if (!e.contentChanges.length) return;
-  // Follow the lines ATC checked, so each ATC finding stays with its statement after a fix, an undo or typing
-  const state = atcState.get(key);
-  if (state) {
-    Atc.trackChanges(state, e.contentChanges.map((c) => ({ start: c.range.start.line, end: c.range.end.line, text: c.text })));
-  }
+  atc.trackChanges(key, e.contentChanges);
   if (!tracked.has(key)) return;
   if (!cfg(doc.uri).get('scanOnType', true)) return;
   clearTimeout(typingTimers.get(key));
@@ -579,7 +359,7 @@ function onTabsClosed(closed) {
   let changed = false;
   for (const key of new Set(closed.flatMap(tabUris))) {
     if (open.has(key)) continue;
-    previewContent.delete(key);
+    preview.forget(key);
     untrack(key);
     selection.forget(key);
     const entry = store.get(key);
@@ -728,12 +508,12 @@ async function applyFindings(uri, selector) {
   const applied = reportApplied(tally(plan));
   // The fixes are checked by ATC once they are in the system
   // One ATC run after the fix: offered, not started, since saving writes the fixed code to the SAP system
-  if (applied && atcEnabled(doc)) {
+  if (applied && atc.enabled(doc)) {
     log('ATC: ' + applied + ' fixes applied to ' + doc.fileName + '. Save (it goes to the SAP system), then ATC checks the fixed code.');
     vscode.window.showInformationMessage('SmartFix for ABAP: save the fixed file and re-check it with ATC?', SAVE_AND_RUN).then(async (pick) => {
       if (pick !== SAVE_AND_RUN || doc.isClosed) return;
       if (doc.isDirty && !(await doc.save())) return;
-      await runAtc(doc);
+      await atc.run(doc);
       scanDocument(doc);
     });
   }
@@ -757,7 +537,7 @@ async function applyWorkspace(mode) {
   for (const uri of uris) {
     try {
       const doc = await vscode.workspace.openTextDocument(uri);
-      await ensureAtc(doc);
+      await atc.ensure(doc);
       const p = planFor(doc, { all: true, mode });
       skipped += p.skipped;
       if (p.picked.length) plans.push({ doc, plan: p.plan });
@@ -804,7 +584,7 @@ function skippedNote(skipped) {
 
 /** Show what will be fixed and ask for confirmation; the diff can be previewed first */
 async function confirmAndApply(doc, mode) {
-  await ensureAtc(doc);
+  await atc.ensure(doc);
   scanDocument(doc);
   const blocked = notCustomerObject(doc);
   if (blocked) {
@@ -835,141 +615,15 @@ async function confirmAndApply(doc, mode) {
   return applyFindings(doc.uri, { all: true, mode });
 }
 
-// ---------------------------------------------------------------- diff preview
+// ---------------------------------------------------------------- diff preview (preview.js)
 
-const PREVIEW_SCHEME = 'abap-smartfix-preview';
-/** @type {Map<string, {uri: vscode.Uri, source: string, mode: string|null, text: string}>} preview uri -> content */
-const previewContent = new Map();
-
-class PreviewContentProvider {
-  constructor() {
-    this._onDidChange = new vscode.EventEmitter();
-    this.onDidChange = this._onDidChange.event;
-  }
-  provideTextDocumentContent(uri) {
-    const p = previewContent.get(uri.toString());
-    return p ? p.text : '';
-  }
-}
-
-let previewProvider;
-
-function fixedText(doc, mode) {
-  return applyEditsToText(doc.getText(), planFor(doc, { all: true, mode }).plan.edits);
-}
-
-/** Recompute open previews of the document, e.g. after fixes were applied or the file was saved */
-function refreshPreviews(doc) {
-  if (!previewProvider) return;
-  const key = doc.uri.toString();
-  for (const p of previewContent.values()) {
-    if (p.source !== key) continue;
-    p.text = fixedText(doc, p.mode);
-    previewProvider._onDidChange.fire(p.uri);
-  }
-}
+/** @type {Preview} */
+let preview;
 
 /** Open a diff of the current content against the auto-fixed content, without touching the file */
 async function previewFix(doc, mode) {
   scanDocument(doc);
-  return openPreview(doc, mode, false);
-}
-
-/**
- * The diff preview: the original on the left, the fixed code on the right, in one editor. quiet: opened from the sidebar,
- * without messages when there is nothing to preview. Returns the fixed text, or null when nothing was opened.
- */
-async function openPreview(doc, mode, quiet) {
-  const { picked, plan } = planFor(doc, { all: true, mode });
-  if (!picked.length) {
-    if (!quiet) vscode.window.showInformationMessage('Nothing to fix.');
-    return null;
-  }
-  // A diff without changes shows no red / green at all: say why instead of opening it
-  if (!plan.edits.length) {
-    if (quiet) return null;
-    const manual = tally(plan).manual;
-    logUnfixable(doc, plan);
-    vscode.window.showInformationMessage('No automatic changes to preview: ' + manual + ' finding' + (manual === 1 ? '' : 's') +
-      ' need manual fixing (see the Output panel).');
-    if (output) output.show(true);
-    return null;
-  }
-  const fixed = applyEditsToText(doc.getText(), plan.edits);
-  const name = path.basename(doc.fileName);
-  const puri = vscode.Uri.parse(
-    PREVIEW_SCHEME + ':/' + encodeURIComponent(name) + '?' + encodeURIComponent(doc.uri.toString())
-  );
-  previewContent.set(puri.toString(), { uri: puri, source: doc.uri.toString(), mode: mode || null, text: fixed });
-  previewProvider._onDidChange.fire(puri);
-  await ensureSideBySide();
-  // In the editor group that shows the file, not beside it; pinned (preview: false), so opening a finding does not replace it
-  const key = doc.uri.toString();
-  const shown = (vscode.window.visibleTextEditors || []).find((e) => e.document.uri.toString() === key);
-  const options = { preview: false };
-  if (shown && shown.viewColumn) options.viewColumn = shown.viewColumn;
-  await vscode.commands.executeCommand('vscode.diff', doc.uri, puri, name + ' ↔ Auto Fix Preview', options);
-  return fixed;
-}
-
-/**
- * Side by side: the original on the left, the preview on the right. VS Code shows a diff inline when it is off or when the
- * editor is narrow; abap-smartfix.preview.sideBySide (default on) turns both off in the user settings, once.
- */
-async function ensureSideBySide() {
-  if (!cfg().get('preview.sideBySide', true)) return;
-  const de = vscode.workspace.getConfiguration('diffEditor');
-  try {
-    if (de.get('renderSideBySide') === false) await de.update('renderSideBySide', true, vscode.ConfigurationTarget.Global);
-    if (de.get('useInlineViewWhenSpaceIsLimited') !== false) {
-      await de.update('useInlineViewWhenSpaceIsLimited', false, vscode.ConfigurationTarget.Global);
-      log('Preview: diffEditor.useInlineViewWhenSpaceIsLimited set to false, so the preview stays side by side ' +
-        '(turn off abap-smartfix.preview.sideBySide to keep your own diff settings).');
-    }
-  } catch (e) {
-    log('Preview: could not set the diff editor to side by side: ' + (e && e.message ? e.message : e));
-  }
-}
-
-/** The editor of the file inside its diff preview (the left side), waiting briefly for VS Code to show it */
-async function originalSideOf(key, tab) {
-  for (let i = 0; i < 20; i++) {
-    const ed = (vscode.window.visibleTextEditors || []).find((e) =>
-      e.document.uri.toString() === key && (!tab || e.viewColumn === tab.group.viewColumn));
-    if (ed) return ed;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  return null;
-}
-
-/** The still open diff preview tab of a file, if any */
-function findPreviewTab(sourceKey) {
-  for (const g of vscode.window.tabGroups.all) {
-    for (const t of g.tabs) {
-      const input = t.input;
-      if (!input || !input.original || !input.modified) continue;
-      const p = previewContent.get(input.modified.toString());
-      if (p && p.source === sourceKey && input.original.toString() === sourceKey) return t;
-    }
-  }
-  return null;
-}
-
-/**
- * Bring an open diff preview of the file back to the front (e.g. after switching to the plain file tab),
- * so both the original and the preview are shown. Returns the diff tab, or null when there is none.
- */
-async function showPreviewDiff(sourceKey) {
-  const tab = findPreviewTab(sourceKey);
-  if (!tab) return null;
-  if (!tab.isActive) {
-    const input = tab.input;
-    await vscode.commands.executeCommand('vscode.diff', input.original, input.modified, tab.label, {
-      preview: false,
-      viewColumn: tab.group.viewColumn,
-    });
-  }
-  return tab;
+  return preview.open(doc, mode, false);
 }
 
 // ---------------------------------------------------------------- Quick Fix
@@ -1109,7 +763,7 @@ async function fixSelection(uri, fromLine, toLine) {
     fromLine = sel.start.line;
     toLine = lastSelectedLine(sel.start, sel.end);
   }
-  await ensureAtc(doc);
+  await atc.ensure(doc);
   scanDocument(doc);
   const entry = freshEntry(doc);
   const inSel = entry ? findingsInLines(entry.result.findings, fromLine, toLine) : [];
@@ -1158,7 +812,7 @@ function setAllChecked(checked) {
 
 /** Previews only show checked findings, so recompute open previews of files whose checkboxes changed */
 function refreshPreviewsOf(keys) {
-  for (const doc of vscode.workspace.textDocuments || []) if (keys.has(doc.uri.toString())) refreshPreviews(doc);
+  for (const doc of vscode.workspace.textDocuments || []) if (keys.has(doc.uri.toString())) preview.refresh(doc);
 }
 
 // ---------------------------------------------------------------- annotation names: learning
@@ -1282,8 +936,21 @@ async function scanWorkspace() {
 // ---------------------------------------------------------------- activate
 
 function activate(context) {
-  extContext = context;
   output = vscode.window.createOutputChannel('SmartFix for ABAP');
+  preview = new Preview({
+    plan: (doc, mode) => planFor(doc, { all: true, mode }),
+    logUnfixable,
+    showOutput: () => output.show(true),
+    cfg,
+    log,
+  });
+  atc = new AtcRunner({
+    cfg,
+    log,
+    globalState: context.globalState,
+    analyze: (doc) => analyzeText(doc, readOptions(doc.uri)),
+    preview,
+  });
   diagnostics = vscode.languages.createDiagnosticCollection('abap-smartfix');
   provider = new FindingsProvider(store, selection);
   statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
@@ -1298,7 +965,6 @@ function activate(context) {
   if (treeView.onDidChangeCheckboxState) context.subscriptions.push(treeView.onDidChangeCheckboxState(onCheckboxChanged));
   findingsView = treeView;
   showAtcState();
-  previewProvider = new PreviewContentProvider();
 
   const selector = [
     { language: 'abap' },
@@ -1313,10 +979,10 @@ function activate(context) {
       return null;
     }
     // In the diff preview the focus can be on the preview side: work on the file it previews
-    const preview = previewContent.get(ed.document.uri.toString());
-    if (preview) {
-      const source = vscode.workspace.textDocuments.find((d) => d.uri.toString() === preview.source);
-      return source || vscode.workspace.openTextDocument(vscode.Uri.parse(preview.source));
+    const previewed = preview.sourceOf(ed.document.uri);
+    if (previewed) {
+      const source = vscode.workspace.textDocuments.find((d) => d.uri.toString() === previewed);
+      return source || vscode.workspace.openTextDocument(vscode.Uri.parse(previewed));
     }
     if (isAbapDoc(ed.document)) return ed.document;
     const pick = await vscode.window.showWarningMessage(
@@ -1333,16 +999,22 @@ function activate(context) {
     statusBar,
     treeView,
 
-    vscode.workspace.registerTextDocumentContentProvider(PREVIEW_SCHEME, previewProvider),
+    vscode.workspace.registerTextDocumentContentProvider(PREVIEW_SCHEME, preview),
 
     vscode.languages.registerCodeActionsProvider(selector, new SmartFixCodeActionProvider(), {
       providedCodeActionKinds: [vscode.CodeActionKind.QuickFix, vscode.CodeActionKind.Source, FIX_ALL_KIND],
     }),
 
+    // Only files that were analyzed; re-analyzed after edits so line numbers match the current text
+    vscode.languages.registerHoverProvider(selector, new FindingHoverProvider({
+      entryFor: (doc) => (store.has(doc.uri.toString()) ? freshEntry(doc) : undefined),
+      cfg,
+    })),
+
     vscode.commands.registerCommand('abap-smartfix.scanFile', async () => {
       const doc = await activeAbapDoc();
       if (!doc) return;
-      await runAtc(doc);
+      await atc.run(doc);
       const result = scanDocument(doc);
       await showSidebar();
       const n = countActions(result.findings);
@@ -1361,7 +1033,7 @@ function activate(context) {
     vscode.commands.registerCommand('abap-smartfix.applyAll', async () => {
       const doc = await activeAbapDoc();
       if (!doc) return;
-      await runAtc(doc);
+      await atc.run(doc);
       await showSidebar();
       await confirmAndApply(doc, null);
     }),
@@ -1369,7 +1041,7 @@ function activate(context) {
     vscode.commands.registerCommand('abap-smartfix.applySuppressOnly', async () => {
       const doc = await activeAbapDoc();
       if (!doc) return;
-      await runAtc(doc);
+      await atc.run(doc);
       await showSidebar();
       await confirmAndApply(doc, 'suppress');
     }),
@@ -1377,7 +1049,7 @@ function activate(context) {
     vscode.commands.registerCommand('abap-smartfix.previewFix', async () => {
       const doc = await activeAbapDoc();
       if (!doc) return;
-      await runAtc(doc);
+      await atc.run(doc);
       await showSidebar();
       await previewFix(doc, null);
     }),
@@ -1465,16 +1137,16 @@ function activate(context) {
       // Show the original and the preview together: the open diff preview of the file, or a new one when there are
       // automatic changes; the line is selected on the original (left) side and the preview side scrolls with it
       const key = uri.toString();
-      let diffTab = await showPreviewDiff(key);
+      let diffTab = await preview.showDiff(key);
       if (!diffTab && cfg(uri).get('preview.onReveal', true) && store.has(key)) {
         try {
           const doc = await vscode.workspace.openTextDocument(uri);
-          if (await openPreview(doc, null, true)) diffTab = findPreviewTab(key);
+          if (await preview.open(doc, null, true)) diffTab = preview.findTab(key);
         } catch (e) {
           log('Preview could not be opened: ' + (e && e.message ? e.message : e));
         }
       }
-      let editor = diffTab ? await originalSideOf(key, diffTab) : null;
+      let editor = diffTab ? await preview.originalSideOf(key, diffTab) : null;
       if (!editor) {
         const active = vscode.window.activeTextEditor;
         const visible = vscode.window.visibleTextEditors || [];
@@ -1499,8 +1171,8 @@ function activate(context) {
       if (!entry) return;
       const doc = await vscode.workspace.openTextDocument(entry.uri);
       // A finding listed before ATC was run: run it now, the finding may turn out not to be reported by ATC
-      if (atcSwitchedOn(doc.uri) && !atcState.has(entry.uri.toString())) {
-        await runAtc(doc);
+      if (atc.switchedOn(doc.uri) && !atc.state(entry.uri.toString())) {
+        await atc.run(doc);
         scanDocument(doc);
       }
       await applyFindings(entry.uri, { keys: [node.finding.key] });
@@ -1519,7 +1191,7 @@ function activate(context) {
 
     vscode.commands.registerCommand('abap-smartfix.clear', clearAll),
 
-    vscode.commands.registerCommand('abap-smartfix.toggleAtc', () => setAtc(!atcSwitchedOn())),
+    vscode.commands.registerCommand('abap-smartfix.toggleAtc', () => setAtc(!atc.switchedOn())),
     vscode.commands.registerCommand('abap-smartfix.atcOn', () => setAtc(true)),
     vscode.commands.registerCommand('abap-smartfix.atcOff', () => setAtc(false)),
     vscode.commands.registerCommand('abap-smartfix.selectAtcVariant', selectAtcVariant),

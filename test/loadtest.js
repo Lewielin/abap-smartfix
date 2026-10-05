@@ -59,6 +59,9 @@ class MarkdownString {
   appendText(t) { this.value += t; return this; }
   appendMarkdown(t) { this.value += t; return this; }
 }
+class Hover {
+  constructor(contents, range) { this.contents = contents; this.range = range; }
+}
 class Diagnostic {
   constructor(range, message, severity) { this.range = range; this.message = message; this.severity = severity; }
 }
@@ -152,7 +155,7 @@ const pickedVariants = [];
 
 const vscodeStub = {
   Position, Range, Selection, EventEmitter, TreeItem, ThemeIcon, MarkdownString,
-  Diagnostic, CodeAction, WorkspaceEdit, Uri,
+  Diagnostic, Hover, CodeAction, WorkspaceEdit, Uri,
   TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
   TreeItemCheckboxState: { Unchecked: 0, Checked: 1 },
   DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2, Hint: 3 },
@@ -194,6 +197,7 @@ const vscodeStub = {
       dispose() {},
     }),
     registerCodeActionsProvider: (sel, prov) => { vscodeStub._codeActionProvider = prov; return { dispose() {} }; },
+    registerHoverProvider: (sel, prov) => { vscodeStub._hoverProvider = prov; return { dispose() {} }; },
     getDiagnostics: (uri) => adtDiagnostics.get(uri.toString()) || [],
   },
   // ABAP Development Tools for VS Code: installed only for the ATC test
@@ -385,6 +389,19 @@ activeDoc = makeDoc(path.join(__dirname, '..', 'samples', 'demo.abap'));
   check('SELECT SINGLE also offers "#EC CI_NOORDER', ssTitles.some((t) => /Add "#EC CI_NOORDER/.test(t)), ssTitles.join(' | '));
   check('rewrite is listed before the annotation',
     ssTitles.findIndex((t) => /^Rewrite: /.test(t)) < ssTitles.findIndex((t) => /^Add "#EC CI_NOORDER/.test(t)));
+
+  console.log('\n== Hover ==');
+  const hover = vscodeStub._hoverProvider.provideHover(activeDoc, new Position(27, 4));
+  const hoverText = hover ? hover.contents.value : '';
+  check('hover on line 28 lists its findings', !!hover && (hoverText.match(/SmartFix for ABAP:/g) || []).length >= 3, hoverText);
+  check('hover explains why (the rule text)', /SY-SUBRC handling/.test(hoverText), hoverText);
+  check('hover names the annotation', /"#EC CI_SUBRC/.test(hoverText), hoverText);
+  check('hover is not trusted (no command links)', !!hover && hover.contents.isTrusted === false);
+  check('hover covers the line', !!hover && hover.range.start.line === 27 && hover.range.end.line === 27);
+  check('no hover on a line without findings', vscodeStub._hoverProvider.provideHover(activeDoc, new Position(0, 0)) == null);
+  settings.hover = false;
+  check('abap-smartfix.hover false turns the hover off', vscodeStub._hoverProvider.provideHover(activeDoc, new Position(27, 4)) == null);
+  delete settings.hover;
 
   console.log('\n== Auto fix on save (source.fixAll) ==');
   const fixAll = vscodeStub._codeActionProvider.provideCodeActions(

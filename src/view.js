@@ -18,6 +18,15 @@ function checkbox(checked, tooltip) {
   return { state: checked ? CHECKBOX.Checked : CHECKBOX.Unchecked, tooltip };
 }
 
+/** The ways a finding can be fixed, and its SCI check classes (sidebar tooltip, hover) */
+function fixAlternatives(f) {
+  const alt = [];
+  if (f.rewrite) alt.push('Rewrite: ' + f.rewrite.summary + (f.rewrite.safety === 'review' ? ' (needs review)' : ''));
+  if (f.canSuppress) alt.push('Annotation: `' + f.token + '`' + (f.tokenSource === 'setting' ? ' (from tokenOverrides)' : ''));
+  if (f.sciClasses && f.sciClasses.length) alt.push('SCI: ' + f.sciClasses.join(', '));
+  return alt;
+}
+
 class FindingsProvider {
   /**
    * @param {Map<string, {uri: vscode.Uri, text: string, result: object}>} store
@@ -85,10 +94,7 @@ class FindingsProvider {
       item.description = f.title + (f.detail ? ' — ' + f.detail : '');
       item.iconPath =
         f.action === 'rewrite' ? REWRITE_ICON : SEVERITY_ICON[f.severity] || SEVERITY_ICON.information;
-      const alt = [];
-      if (f.rewrite) alt.push('Rewrite: ' + f.rewrite.summary + (f.rewrite.safety === 'review' ? ' (needs review)' : ''));
-      if (f.canSuppress) alt.push('Annotation: `' + f.token + '`' + (f.tokenSource === 'setting' ? ' (from tokenOverrides)' : ''));
-      if (f.sciClasses && f.sciClasses.length) alt.push('SCI: ' + f.sciClasses.join(', '));
+      const alt = fixAlternatives(f);
       // Code and ATC texts are shown, never run: no command links, no HTML, and a fence longer than any backticks in the code
       const fence = '`'.repeat(Math.max(3, ...(String(f.code).match(/`+/g) || []).map((b) => b.length + 1)));
       const tip = new vscode.MarkdownString();
@@ -114,4 +120,4 @@ class FindingsProvider {
   }
 }
 
-module.exports = { FindingsProvider };
+module.exports = { FindingsProvider, fixAlternatives };
