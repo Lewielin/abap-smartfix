@@ -19,6 +19,7 @@ $env:ELECTRON_RUN_AS_NODE=1
 $code = "$env:LOCALAPPDATA\Programs\Microsoft VS Code\Code.exe"
 foreach ($t in 'run', 'loadtest', 'sci', 'ddic', 'atc') { & $code "test\$t.js" }   # each ends with ALL PASS
 & $code tools\sci-coverage.js   # after changing rules: regenerates SCI-COVERAGE.md
+& $code tools\check-adt-atc-api.js   # after ADT for VS Code is updated: can the ATC check variant be passed directly now?
 ```
 
 | Test | Covers |
@@ -44,7 +45,10 @@ For a release: `version` in `package.json` with a section at the top of `CHANGEL
 
 | File | Role |
 | --- | --- |
-| `src/extension.js` | VS Code integration: commands, diagnostics, Quick Fix, diff preview, status bar, running ATC |
+| `src/extension.js` | VS Code integration: commands, diagnostics, Quick Fix, status bar, sidebar checkboxes |
+| `src/atc-runner.js` | runs ATC through ADT for VS Code (also with a check variant), the ATC result per document, buffered tables remembered per system |
+| `src/preview.js` | the diff preview (original ↔ fixed) and its content provider |
+| `src/hover.js` | hover on a reported statement: why, and the ways to fix it |
 | `src/lexer.js` | statement splitter: literals, string templates, comments, chained statements, positions |
 | `src/analyzer.js` | applies the rules and decides rewrite / annotation / manual per finding |
 | `src/finding.js` | what source and ATC findings share: rule registry, enabled rules, fix mode → action / label, location |
