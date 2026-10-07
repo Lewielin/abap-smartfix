@@ -244,12 +244,12 @@
         {
           "command": "abap-smartfix.fixSelection",
           "when": "editorHasSelection && (editorLangId == abap || resourceExtname == .abap)",
-          "group": "abap-smartfix@5"
+          "group": "abap-smartfix@1"
         },
         {
           "command": "abap-smartfix.copyAiPrompt",
           "when": "editorLangId == abap || resourceExtname == .abap",
-          "group": "abap-smartfix@6"
+          "group": "abap-smartfix@2"
         },
         {
           "command": "abap-smartfix.applyAll",
@@ -259,12 +259,12 @@
         {
           "command": "abap-smartfix.previewFix",
           "when": "editorLangId == abap || resourceExtname == .abap",
-          "group": "abap-smartfix@2"
+          "group": "abap-smartfix@4"
         },
         {
           "command": "abap-smartfix.applySuppressOnly",
           "when": "editorLangId == abap || resourceExtname == .abap",
-          "group": "abap-smartfix@4"
+          "group": "abap-smartfix@5"
         }
       ],
       "editor/title": [
@@ -542,10 +542,10 @@
           "default": true,
           "description": "Show the preview side by side: the original on the left, the fixed code on the right, also in a narrow window. Sets diffEditor.renderSideBySide to true and diffEditor.useInlineViewWhenSpaceIsLimited to false in your user settings when a preview opens. Turn off to keep your own diff settings."
         },
-        "abap-smartfix.preview.maximize": {
+        "abap-smartfix.preview.closeSecondarySideBar": {
           "type": "boolean",
           "default": true,
-          "description": "When a preview opens, close the bottom panel and the secondary side bar and shrink other editor groups, so the original and the fixed code get the room of the window. The SmartFix for ABAP sidebar stays open. Turn off to keep your layout."
+          "description": "When a preview opens, close the secondary side bar, so the original and the fixed code get more room. The bottom panel, other editor groups and the SmartFix for ABAP sidebar stay as they are. Turn off to keep your layout."
         },
         "abap-smartfix.preview.onReveal": {
           "type": "boolean",

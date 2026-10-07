@@ -93,20 +93,15 @@ class Preview {
   }
 
   /**
-   * Give the preview the room of the window: close the bottom panel and the secondary side bar, and shrink other editor
-   * groups. The SmartFix for ABAP sidebar stays, its findings go with the preview. abap-smartfix.preview.maximize turns it off.
+   * Give the preview more room: close the secondary side bar. The bottom panel, other editor groups and the SmartFix for ABAP
+   * sidebar (its findings go with the preview) stay. abap-smartfix.preview.closeSecondarySideBar turns it off.
    */
   async makeRoom() {
-    if (!this.host.cfg().get('preview.maximize', true)) return;
-    const commands = ['workbench.action.closePanel', 'workbench.action.closeAuxiliaryBar'];
-    // Run on the group of the diff, which is the active one now
-    if (vscode.window.tabGroups.all.length > 1) commands.push('workbench.action.minimizeOtherEditors');
-    for (const c of commands) {
-      try {
-        await vscode.commands.executeCommand(c);
-      } catch (e) {
-        this.host.log('Preview: ' + c + ' failed: ' + (e && e.message ? e.message : e));
-      }
+    if (!this.host.cfg().get('preview.closeSecondarySideBar', true)) return;
+    try {
+      await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
+    } catch (e) {
+      this.host.log('Preview: the secondary side bar could not be closed: ' + (e && e.message ? e.message : e));
     }
   }
 

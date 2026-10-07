@@ -428,16 +428,16 @@ activeDoc = makeDoc(path.join(__dirname, '..', 'samples', 'demo.abap'));
   check('the preview is kept side by side, also in a narrow window (diffEditor.useInlineViewWhenSpaceIsLimited = false)',
     configUpdates.some((u) => u[0] === 'diffEditor' && u[1] === 'useInlineViewWhenSpaceIsLimited' && u[2] === false), JSON.stringify(configUpdates));
   const diffAt = executed.indexOf(diffCall);
-  check('the preview gets the room: panel and secondary side bar closed after the diff opens',
-    executed.slice(diffAt).some((a) => a[0] === 'workbench.action.closePanel') &&
+  check('the preview gets more room: secondary side bar closed after the diff opens',
     executed.slice(diffAt).some((a) => a[0] === 'workbench.action.closeAuxiliaryBar'));
-  check('one editor group: other groups are not touched', !executed.some((a) => a[0] === 'workbench.action.minimizeOtherEditors'));
-  settings['preview.maximize'] = false;
+  check('the bottom panel and other editor groups are left alone',
+    !executed.some((a) => a[0] === 'workbench.action.closePanel' || a[0] === 'workbench.action.minimizeOtherEditors'));
+  settings['preview.closeSecondarySideBar'] = false;
   executed.length = 0;
   await registered.get('abap-smartfix.previewFix')();
-  delete settings['preview.maximize'];
-  check('preview.maximize = false keeps the layout',
-    executed.some((a) => a[0] === 'vscode.diff') && !executed.some((a) => a[0] === 'workbench.action.closePanel'));
+  delete settings['preview.closeSecondarySideBar'];
+  check('preview.closeSecondarySideBar = false keeps the layout',
+    executed.some((a) => a[0] === 'vscode.diff') && !executed.some((a) => a[0] === 'workbench.action.closeAuxiliaryBar'));
 
   // Diff has focus (right side is the preview document); the file is visible as the diff's left side
   hideActiveEditor = true;
