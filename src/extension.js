@@ -598,12 +598,13 @@ async function confirmAndApply(doc, mode) {
   }
   const n = countActions(picked);
   const manual = tally(plan).manual;
+  // Started from the preview (its Apply button): the diff is already shown
+  const buttons = preview.isActive(doc.uri.toString()) ? [APPLY] : [APPLY, PREVIEW];
   const pick = await vscode.window.showWarningMessage(
     'This will modify the file: ' + n.rewrite + ' rewrites, ' + n.suppress + ' annotations' +
       (manual ? '; ' + manual + ' need manual fixing' : '') + skippedNote(skipped) + '. Continue?',
     { modal: true },
-    APPLY,
-    PREVIEW
+    ...buttons
   );
   if (pick === PREVIEW) {
     if ((await previewFix(doc, mode)) == null) return 0;
@@ -612,7 +613,10 @@ async function confirmAndApply(doc, mode) {
   } else if (pick !== APPLY) {
     return 0;
   }
-  return applyFindings(doc.uri, { all: true, mode });
+  const applied = await applyFindings(doc.uri, { all: true, mode });
+  // The diff has nothing left to show but manual or unchecked findings: back to the fixed file
+  if (applied) await preview.close(doc);
+  return applied;
 }
 
 // ---------------------------------------------------------------- diff preview (preview.js)
@@ -880,10 +884,6 @@ async function openVirtualDoc(content, language) {
   return doc;
 }
 
-async function ensureScanned(doc) {
-  return freshEntry(doc);
-}
-
 /** Show the SmartFix for ABAP sidebar with the findings, then give the keyboard focus back to the editor */
 async function showSidebar() {
   try {
@@ -1064,7 +1064,7 @@ function activate(context) {
     vscode.commands.registerCommand('abap-smartfix.copyAiPrompt', async () => {
       const doc = await activeAbapDoc();
       if (!doc) return;
-      await ensureScanned(doc);
+      freshEntry(doc);
       await showSidebar();
       const files = entriesForPrompt(doc.uri);
       if (!files.length) {
@@ -1081,7 +1081,7 @@ function activate(context) {
     vscode.commands.registerCommand('abap-smartfix.showAiPrompt', async () => {
       const doc = await activeAbapDoc();
       if (!doc) return;
-      await ensureScanned(doc);
+      freshEntry(doc);
       const files = entriesForPrompt(doc.uri);
       if (!files.length) {
         vscode.window.showInformationMessage('This file has no findings.');

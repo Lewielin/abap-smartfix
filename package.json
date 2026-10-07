@@ -2,7 +2,7 @@
   "name": "abap-smartfix",
   "displayName": "SmartFix for ABAP",
   "description": "Auto Fix ATC Findings, Pragmas and Modern Syntax for SAP ABAP",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "publisher": "Lewie-Lin",
   "license": "MIT",
   "repository": {
@@ -244,12 +244,12 @@
         {
           "command": "abap-smartfix.fixSelection",
           "when": "editorHasSelection && (editorLangId == abap || resourceExtname == .abap)",
-          "group": "abap-smartfix@1"
+          "group": "abap-smartfix@5"
         },
         {
           "command": "abap-smartfix.copyAiPrompt",
           "when": "editorLangId == abap || resourceExtname == .abap",
-          "group": "abap-smartfix@2"
+          "group": "abap-smartfix@6"
         },
         {
           "command": "abap-smartfix.applyAll",
@@ -259,12 +259,12 @@
         {
           "command": "abap-smartfix.previewFix",
           "when": "editorLangId == abap || resourceExtname == .abap",
-          "group": "abap-smartfix@4"
+          "group": "abap-smartfix@2"
         },
         {
           "command": "abap-smartfix.applySuppressOnly",
           "when": "editorLangId == abap || resourceExtname == .abap",
-          "group": "abap-smartfix@5"
+          "group": "abap-smartfix@4"
         }
       ],
       "editor/title": [
@@ -272,6 +272,11 @@
           "command": "abap-smartfix.scanFile",
           "when": "editorLangId == abap || resourceExtname == .abap",
           "group": "navigation@1"
+        },
+        {
+          "command": "abap-smartfix.applyAll",
+          "when": "resourceScheme == abap-smartfix-preview",
+          "group": "navigation@0"
         }
       ],
       "view/title": [
@@ -536,6 +541,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show the preview side by side: the original on the left, the fixed code on the right, also in a narrow window. Sets diffEditor.renderSideBySide to true and diffEditor.useInlineViewWhenSpaceIsLimited to false in your user settings when a preview opens. Turn off to keep your own diff settings."
+        },
+        "abap-smartfix.preview.maximize": {
+          "type": "boolean",
+          "default": true,
+          "description": "When a preview opens, close the bottom panel and the secondary side bar and shrink other editor groups, so the original and the fixed code get the room of the window. The SmartFix for ABAP sidebar stays open. Turn off to keep your layout."
         },
         "abap-smartfix.preview.onReveal": {
           "type": "boolean",

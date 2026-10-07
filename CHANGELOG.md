@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.4
+
+- **Preview Fixes** is the main way to fix: it comes second in the right-click menu, gets the room of the window, and has an Auto Fix button that applies the fixes and returns to the file.
+
 ## 1.5.3
 
 - **Hover**: hover over a reported line to see why it is reported and how it can be fixed. Turn it off with
