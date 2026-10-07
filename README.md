@@ -24,23 +24,35 @@ Files not opened from ADT, such as abapGit `.abap` files, are checked from the s
 
 ## Getting started
 
+Everything starts from the right-click menu in the editor. The recommended way is **Preview Fixes**: you see every change before the file is touched.
+
 1. Open an ABAP program, class or include.
-2. Right-click in the editor and choose SmartFix for ABAP: Analyze Current File.
-3. Review the findings in the SmartFix for ABAP sidebar. Uncheck the ones you want to skip.
-4. Fix them:
+2. Right-click in the editor and choose **SmartFix for ABAP: Preview Fixes**.
+   ATC runs, the findings are listed in the SmartFix for ABAP sidebar, and a diff opens: your code on the left, the fixed code on the right. The bottom panel and the secondary side bar close, so the diff gets the room of the window.
+3. Review the diff. Click a finding in the sidebar to jump to it. Uncheck a finding to skip it; the diff updates right away.
+4. Click **Auto Fix Current File** (the wand at the top right of the diff) and confirm. The fixes are applied and the diff is replaced by the fixed file.
+5. Save the file. SmartFix for ABAP offers to run ATC again to confirm.
 
-| To do this | Use |
-| --- | --- |
-| See the changes first | Preview Fixes |
-| Fix everything checked | Auto Fix Current File |
-| Only add pragmas and pseudo comments | Add Pragmas & Pseudo Comments Only |
-| Fix one line | `Ctrl+.` on the line |
-| Fix some lines | Select them, right-click, Fix Findings in Selection… |
-| Ask an AI assistant | Copy AI Prompt |
+One `Ctrl+Z` undoes a whole fix. Files are never saved automatically.
 
-Hover over a reported line to see why it is reported and how it can be fixed (`abap-smartfix.hover` turns this off).
+## The right-click menu
 
-One `Ctrl+Z` undoes a whole fix. Files are not saved automatically. After fixing, save and run ATC again to confirm.
+| Menu item | What it does | Changes the file |
+| --- | --- | --- |
+| Analyze Current File | Runs ATC and lists the findings in the sidebar and the Problems panel | No |
+| **Preview Fixes** | Analyzes, then shows the original and the fixed code side by side | No |
+| Auto Fix Current File | Fixes every finding checked in the sidebar, after a confirmation. The confirmation can also open the preview | Yes |
+| Add Pragmas & Pseudo Comments Only | Like Auto Fix, but never rewrites code: only adds pragmas (`##…`) and pseudo comments (`"#EC …`) | Yes |
+| Fix Findings in Selection… | Shown only when code is selected: pick which findings of the selected lines to fix | Yes |
+| Copy AI Prompt | Copies the findings, with the source, as a prompt for your AI assistant | No |
+
+You do not need to run Analyze first: every menu item analyzes the file itself.
+
+Other ways to fix:
+
+- `Ctrl+.` on a reported line fixes that line; you can choose between a rewrite and an annotation.
+- Hover over a reported line to see why it is reported and how it can be fixed.
+- The sidebar has buttons to fix one finding, one file, or every analyzed file.
 
 ## Settings
 
@@ -53,6 +65,8 @@ One `Ctrl+Z` undoes a whole fix. Files are not saved automatically. After fixing
 | `abap-smartfix.disabledRules` | `[]` | Rules to turn off |
 | `abap-smartfix.tokenOverrides` | `{}` | Annotation names of your own system |
 | `abap-smartfix.bufferedTables` | `[]` | Buffered tables to know without ATC (the ones ATC reports are remembered) |
+| `abap-smartfix.preview.maximize` | `true` | Close the bottom panel and the secondary side bar when a preview opens |
+| `abap-smartfix.hover` | `true` | Explain reported lines on hover |
 
 Run SmartFix for ABAP: Show Rules to see every rule.
 

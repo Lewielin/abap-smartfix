@@ -427,6 +427,17 @@ activeDoc = makeDoc(path.join(__dirname, '..', 'samples', 'demo.abap'));
   check('diff opens as a pinned tab (preview: false)', !!diffCall && !!diffCall[4] && diffCall[4].preview === false);
   check('the preview is kept side by side, also in a narrow window (diffEditor.useInlineViewWhenSpaceIsLimited = false)',
     configUpdates.some((u) => u[0] === 'diffEditor' && u[1] === 'useInlineViewWhenSpaceIsLimited' && u[2] === false), JSON.stringify(configUpdates));
+  const diffAt = executed.indexOf(diffCall);
+  check('the preview gets the room: panel and secondary side bar closed after the diff opens',
+    executed.slice(diffAt).some((a) => a[0] === 'workbench.action.closePanel') &&
+    executed.slice(diffAt).some((a) => a[0] === 'workbench.action.closeAuxiliaryBar'));
+  check('one editor group: other groups are not touched', !executed.some((a) => a[0] === 'workbench.action.minimizeOtherEditors'));
+  settings['preview.maximize'] = false;
+  executed.length = 0;
+  await registered.get('abap-smartfix.previewFix')();
+  delete settings['preview.maximize'];
+  check('preview.maximize = false keeps the layout',
+    executed.some((a) => a[0] === 'vscode.diff') && !executed.some((a) => a[0] === 'workbench.action.closePanel'));
 
   // Diff has focus (right side is the preview document); the file is visible as the diff's left side
   hideActiveEditor = true;

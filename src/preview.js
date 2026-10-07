@@ -88,7 +88,45 @@ class Preview {
     const options = { preview: false };
     if (shown && shown.viewColumn) options.viewColumn = shown.viewColumn;
     await vscode.commands.executeCommand('vscode.diff', doc.uri, puri, name + ' ↔ Auto Fix Preview', options);
+    await this.makeRoom();
     return fixed;
+  }
+
+  /**
+   * Give the preview the room of the window: close the bottom panel and the secondary side bar, and shrink other editor
+   * groups. The SmartFix for ABAP sidebar stays, its findings go with the preview. abap-smartfix.preview.maximize turns it off.
+   */
+  async makeRoom() {
+    if (!this.host.cfg().get('preview.maximize', true)) return;
+    const commands = ['workbench.action.closePanel', 'workbench.action.closeAuxiliaryBar'];
+    // Run on the group of the diff, which is the active one now
+    if (vscode.window.tabGroups.all.length > 1) commands.push('workbench.action.minimizeOtherEditors');
+    for (const c of commands) {
+      try {
+        await vscode.commands.executeCommand(c);
+      } catch (e) {
+        this.host.log('Preview: ' + c + ' failed: ' + (e && e.message ? e.message : e));
+      }
+    }
+  }
+
+  /** Show the file itself instead of its diff preview, e.g. once the fixes it shows are applied */
+  async close(doc) {
+    const tab = this.findTab(doc.uri.toString());
+    if (!tab || !vscode.window.tabGroups.close) return;
+    try {
+      // The file's own tab first, so closing the diff never closes the (unsaved) file
+      await vscode.window.showTextDocument(doc, { viewColumn: tab.group.viewColumn, preview: false });
+      await vscode.window.tabGroups.close(this.findTab(doc.uri.toString()) || tab);
+    } catch (e) {
+      this.host.log('Preview could not be closed: ' + (e && e.message ? e.message : e));
+    }
+  }
+
+  /** Whether the diff preview of the file is the tab in front */
+  isActive(sourceKey) {
+    const tab = this.findTab(sourceKey);
+    return !!(tab && tab.isActive);
   }
 
   /**
