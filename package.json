@@ -2,7 +2,7 @@
   "name": "abap-smartfix",
   "displayName": "SmartFix for ABAP",
   "description": "Auto Fix ATC Findings, Pragmas and Modern Syntax for SAP ABAP",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "publisher": "Lewie-Lin",
   "license": "MIT",
   "repository": {

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.5
+
+- **ABAP Development Tools for VS Code 1.2**: ATC findings are fixed again. ADT 1.2 reports ATC findings in a new format
+  (for example `1700` instead of `undefined - 1700`), so every ATC finding was listed as a manual fix. SmartFix for ABAP now
+  reads the ADT version and handles both the 1.2 and the 1.1.x format, including findings repeated on the same line.
+- With ADT 1.2, ATC runs on the file directly, without bringing it to the front, so an open preview stays as it is. With a
+  check variant other than `DEFAULT`, or with ADT 1.1.x, ATC runs as before.
+- The ADT version is written to the SmartFix for ABAP output when ATC first runs.
+
 ## 1.5.4
 
 - **Preview Fixes** is the main way to fix: it closes the secondary side bar for more room, and has an Auto Fix button that applies the fixes and returns to the file.
