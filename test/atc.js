@@ -563,6 +563,69 @@ check('"program does not exist" of any check class: exemption', adtMarker('0001'
 check('a message text such as "&1" does not stand for an unknown message',
   adtMarker('XYZ', 'Nested SELECT: result of statement at MAIN line 12 used in WHERE') === '');
 
+console.log('\n== ADT for VS Code 1.2.0: codes "<message id>", " - <n>" for repeats, by the ADT version ==');
+{
+  const f = Atc.adtCodeFormat;
+  check('ADT version → code format: up to 1.1.x "class - id", from 1.2.0 (and unknown) short',
+    f('1.1.2') === 'class-id' && f('0.9.0') === 'class-id' && f('1.2.0') === 'short' && f('2.0.1') === 'short' && f('') === 'short' && f(undefined) === 'short');
+
+  // As ADT 1.2.0 writes it: checkClass && messageId ? "C - M" : checkClass || messageId || "Finding", then " - <n>" for repeats
+  const d12 = (line, code, message, extra) => Object.assign({ source: 'ATC', code, message, severity: 2, range: { start: { line: line - 1 } } }, extra);
+  const ids = (code, version, extra) => {
+    const a = Atc.readAtcDiagnostics([d12(1, code, 'Strings without text elements are not translated: \'X\'', extra)], version)[0];
+    return a.checkClass + '|' + a.messageId;
+  };
+  check('1.2.0: "1700" is the message id, not a check class', ids('1700', '1.2.0') === '|1700', ids('1700', '1.2.0'));
+  check('1.2.0: "1700 - 2" (repeated on the line) is message id 1700', ids('1700 - 2', '1.2.0') === '|1700', ids('1700 - 2', '1.2.0'));
+  check('1.2.0: "AMB_SINGLE" is the message id', ids('AMB_SINGLE', '1.2.0') === '|AMB_SINGLE');
+  check('1.2.0: "<class> - <id>" and "<class> - <id> - <n>"',
+    ids('CL_CI_TEST_EXTENDED_CHECK - 1700', '1.2.0') === 'CL_CI_TEST_EXTENDED_CHECK|1700' &&
+    ids('CL_CI_TEST_EXTENDED_CHECK - 1700 - 3', '1.2.0') === 'CL_CI_TEST_EXTENDED_CHECK|1700');
+  check('1.2.0: a check class alone, and "Finding" (neither)',
+    ids('CL_CI_TEST_EXTENDED_CHECK', '1.2.0') === 'CL_CI_TEST_EXTENDED_CHECK|' && ids('Finding', '1.2.0') === '|');
+  check('1.1.x: "undefined - 1700" as before', ids('undefined - 1700', '1.1.2') === '|1700');
+  check('1.1.x: "<class> - <n>" is class and message id; with 1.2.0 a number after an unknown name is a repeat',
+    ids('ZCHK_OWN - 5', '1.1.2') === 'ZCHK_OWN|5' && ids('ZCHK_OWN - 5', '1.2.0') === '|ZCHK_OWN');
+  check('the ATC finding ADT keeps on the diagnostic (atcFinding) wins over the code',
+    ids('Finding', '1.2.0', { atcFinding: { checkClass: 'CL_CI_TEST_EXTENDED_CHECK', messageId: '1700' } }) === 'CL_CI_TEST_EXTENDED_CHECK|1700');
+  const a1700 = Atc.readAtcDiagnostics([d12(1, '1700', 'Strings without text elements are not translated: \'Batch\'')], '1.2.0')[0];
+  check('1.2.0: "1700" → class from the catalog, annotated ##NO_TEXT',
+    JSON.stringify(a1700.classes) === '["CL_CI_TEST_EXTENDED_CHECK"]' && Atc.markerForAtc(a1700, {}).token === '##NO_TEXT',
+    JSON.stringify(a1700.classes) + ' ' + JSON.stringify(Atc.markerForAtc(a1700, {}).token));
+  const aAmb = Atc.readAtcDiagnostics([d12(1, 'AMB_SINGLE', 'SELECT SINGLE is possibly not unique')], '1.2.0')[0];
+  check('1.2.0: "AMB_SINGLE" → SELECT without ORDER BY check, "#EC CI_NOORDER',
+    aAmb.classes.indexOf('CL_CI_TEST_NO_ORDER_BY') >= 0 && Atc.markerForAtc(aAmb, {}).token === '"#EC CI_NOORDER',
+    JSON.stringify(aAmb.classes) + ' ' + JSON.stringify(Atc.markerForAtc(aAmb, {}).token));
+
+  // The whole way, as in a program ATC checked with ADT 1.2.0
+  const src = [
+    'REPORT z.',                                                            // 1
+    'DATA lv_text TYPE string.',                                            // 2
+    'DATA ls_mara TYPE mara.',                                              // 3
+    'START-OF-SELECTION.',                                                  // 4
+    "  lv_text = 'Batch time machine'.",                                    // 5
+    "  SELECT SINGLE matnr FROM mara INTO ls_mara WHERE mtart = 'FERT'.",   // 6
+    "  WRITE: / 'Done', 'Done'.",                                           // 7
+    '',
+  ].join('\n');
+  const diags = [
+    d12(5, '1700', 'Strings without text elements are not translated: \'Batch time machine\''),
+    d12(6, 'AMB_SINGLE', 'SELECT SINGLE is possibly not unique'),
+    d12(7, '1700 - 1', 'Strings without text elements are not translated: \'Done\''),
+    d12(7, '1700 - 2', 'Strings without text elements are not translated: \'Done\''),
+  ];
+  const opts = { fixMode: 'auto' };
+  const atc12 = Atc.readAtcDiagnostics(diags, '1.2.0');
+  const st = Object.assign({ version: 1 }, Atc.matchAtc(analyze(src, opts), atc12));
+  const r = Atc.applyAtc(analyze(src, opts), st, true, opts);
+  const at = (line) => r.findings.filter((x) => x.line === line - 1).map((x) => x.action + ' ' + (x.token || x.ruleId));
+  const list = r.findings.map((x) => (x.line + 1) + ':' + x.ruleId + ' ' + x.action + ' ' + x.token).join(', ');
+  check('1.2.0 end to end: no ATC finding left as a manual fix', r.findings.every((x) => x.action !== 'manual'), list);
+  check('1.2.0 end to end: text literal → ##NO_TEXT', at(5).some((x) => /##NO_TEXT/.test(x)), list);
+  check('1.2.0 end to end: SELECT SINGLE possibly not unique is fixed', at(6).length > 0 && at(6).every((x) => !/^manual/.test(x)), list);
+  check('1.2.0 end to end: the repeated finding on a line ("1700 - 1", "1700 - 2") → ##NO_TEXT', at(7).some((x) => /##NO_TEXT/.test(x)), list);
+}
+
 {
   const v = Atc.checkVariantOf;
   check('check variant: DEFAULT, empty or unset is the system default (as before)',

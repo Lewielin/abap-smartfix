@@ -184,12 +184,17 @@ class AtcRunner {
       if (current()) return true;
     }
     const version = doc.version;
-    // ADT runs ATC on the active editor, so the file comes to the front; an open diff preview is brought back afterwards
+    const adtVersion = this.adtVersion();
+    this.logAdtVersion(adtVersion);
+    // ADT 1.2.0 and later take the object to check (passUri); before, and to pick a check variant (pasted into ADT's list),
+    // ATC runs on the active editor, so the file comes to the front. An open diff preview is brought back afterwards
+    const passUri = Atc.adtCodeFormat(adtVersion) !== 'class-id';
     const diff = this.host.preview.findTab(key);
     const diffWasActive = !!(diff && diff.isActive);
     try {
       const active = vscode.window.activeTextEditor;
-      if (!active || active.document.uri.toString() !== key) await vscode.window.showTextDocument(doc, { preview: false });
+      const toFront = variant.name || !passUri;
+      if (toFront && (!active || active.document.uri.toString() !== key)) await vscode.window.showTextDocument(doc, { preview: false });
       if (variant.name) log('ATC: running with check variant ' + variant.name + ' on ' + doc.fileName + '.');
       await vscode.window.withProgress(
         {
@@ -198,9 +203,11 @@ class AtcRunner {
         },
         () => new Promise((resolve, reject) => {
           const timer = setTimeout(() => reject(new Error('timeout after ' + ATC_TIMEOUT_MS / 1000 + ' s')), ATC_TIMEOUT_MS);
+          // As ADT's explorer menu calls it: (clicked uri, selected uris)
+          const args = passUri ? [doc.uri, [doc.uri]] : [];
           const run = variant.name
-            ? this.runWithVariant(doc, variant.name, this.variantDelay(doc.uri))
-            : vscode.commands.executeCommand('adt-vscode.runAtcOnObject');
+            ? this.runWithVariant(doc, variant.name, this.variantDelay(doc.uri), args)
+            : vscode.commands.executeCommand('adt-vscode.runAtcOnObject', ...args);
           Promise.resolve(run).then(
             (v) => { clearTimeout(timer); resolve(v); },
             (e) => { clearTimeout(timer); reject(e); });
@@ -213,7 +220,7 @@ class AtcRunner {
       if (diffWasActive) await this.host.preview.showDiff(key);
     }
     if (doc.version !== version) return !!known;
-    const findings = Atc.readAtcDiagnostics(vscode.languages.getDiagnostics(doc.uri));
+    const findings = Atc.readAtcDiagnostics(vscode.languages.getDiagnostics(doc.uri), adtVersion);
     await this.rememberFacts(doc, findings);
     // No findings: ATC found nothing in this version. That is a result too: findings of the checks ATC runs are hidden,
     // and this version is not checked again by the next command
@@ -230,18 +237,18 @@ class AtcRunner {
   }
 
   /**
-   * Run ATC with a check variant. ADT's "Run ABAP Test Cockpit With..." takes no arguments: it asks for the variant in a quick
-   * pick that searches the system as you type, and ADT exports no API to pass one (checked up to ADT for VS Code 1.1.2,
-   * see tools/check-adt-atc-api.js). VS Code has no command that types into a quick pick, so the name is pasted through the
-   * clipboard (its text is put back afterwards) and the first match is accepted once the search had delayMs to answer, a
-   * few more times while nothing matched yet. When that does not work the quick pick stays open with the name filled in,
-   * to pick by hand.
+   * Run ATC with a check variant. ADT's "Run ABAP Test Cockpit With..." asks for the variant in a quick pick that searches
+   * the system as you type; its arguments are only the objects to check (ADT 1.2.0), and ADT exports no API to pass a
+   * variant (checked up to ADT for VS Code 1.2.0, see tools/check-adt-atc-api.js). VS Code has no command that types into a
+   * quick pick, so the name is pasted through the clipboard (its text is put back afterwards) and the first match is
+   * accepted once the search had delayMs to answer, a few more times while nothing matched yet. When that does not work the
+   * quick pick stays open with the name filled in, to pick by hand.
+   * @param {Array} args arguments of ADT's command: the objects to check, or none for the active editor
    * @returns {Promise} settles when ADT's command has finished
    */
-  runWithVariant(doc, name, delayMs) {
-    this.logAdtVersion();
+  runWithVariant(doc, name, delayMs, args) {
     let done = false;
-    const run = Promise.resolve(vscode.commands.executeCommand('adt-vscode.runAtcOnObjectWithVariant'));
+    const run = Promise.resolve(vscode.commands.executeCommand('adt-vscode.runAtcOnObjectWithVariant', ...(args || [])));
     run.then(() => { done = true; }, () => { done = true; });
     this.pickVariant(doc, name, delayMs, () => done).catch((e) =>
       this.host.log('ATC: check variant ' + name + ' could not be picked (' + (e && e.message ? e.message : e) + '); pick it in the open list.'));
@@ -274,13 +281,20 @@ class AtcRunner {
     }
   }
 
-  /** Once per session: the ADT version the check variant is picked with, so a log shows it when a new ADT changes the list */
-  logAdtVersion() {
+  /** Version of ABAP Development Tools for VS Code, '' when unknown: it decides how ATC is called and its result read */
+  adtVersion() {
+    const adt = vscode.extensions.getExtension(ADT_EXTENSION);
+    return adt && adt.packageJSON && adt.packageJSON.version ? String(adt.packageJSON.version) : '';
+  }
+
+  /** Once per session: the ADT version ATC runs with, so a log shows it when a new ADT changes the commands or codes */
+  logAdtVersion(version) {
     if (this.loggedAdtVersion) return;
     this.loggedAdtVersion = true;
-    const adt = vscode.extensions.getExtension(ADT_EXTENSION);
-    const version = adt && adt.packageJSON ? adt.packageJSON.version : 'unknown';
-    this.host.log('ATC: check variant picked through the variant list of ABAP Development Tools for VS Code ' + version + '.');
+    const how = Atc.adtCodeFormat(version) === 'class-id'
+      ? 'on the active editor, codes "<check class> - <message id>"'
+      : 'on the object passed, codes "<message id>" or "<check class> - <message id>", " - <n>" for repeats';
+    this.host.log('ATC: ABAP Development Tools for VS Code ' + (version || '(version unknown)') + ': ATC runs ' + how + '.');
   }
 }
 

@@ -14,9 +14,10 @@
  *   - findings of rules without SCI classes (modern syntax rewrites, custom rules) are kept as they are.
  * Findings are remembered by their key (rule + statement text), so the decision survives edits until ATC is run again.
  *
- * ADT for VS Code 1.1.x publishes the code as "undefined - <message id>": its ATC result carries no check class. The class is
- * then taken from the messages seen in ATC results whose text fits, or from the check classes with that message code in the
- * SCI message catalog (resolveClasses).
+ * How the code is written depends on the ADT version (adtCodeFormat): ADT for VS Code 1.1.x writes "undefined - <message id>"
+ * when its ATC result carries no check class; 1.2.0 writes only "<message id>" then, and adds " - <n>" to a finding repeated
+ * on the same line. Without a check class, the class is taken from the messages seen in ATC results whose text fits, or from
+ * the check classes with that message code in the SCI message catalog (resolveClasses).
  */
 
 const { tokenName, kindOfToken, validToken } = require('./rules');
@@ -129,21 +130,71 @@ function classesOf(a) {
 }
 
 /**
- * ATC diagnostics → { line, checkClass, classes, messageId, message, severity }.
- * checkClass is '' when ADT did not send one ("undefined - 0501"); classes are then resolved from the catalog.
- * @param {Array<{source?: string, code?: any, message: string, range: {start: {line: number}}, severity?: number}>} diags
+ * How a version of ABAP Development Tools for VS Code writes the code of an ATC diagnostic:
+ *   'class-id' (up to 1.1.x): always "<check class> - <message id>", the class "undefined" when ATC sent none;
+ *   'short' (1.2.0 and later, and when the version is unknown): "<check class> - <message id>" only when both are there,
+ *     else the one that is ("1700", "CL_X") or "Finding"; a finding repeated on the same line gets " - <n>" (n from 1).
  */
-function readAtcDiagnostics(diags) {
+function adtCodeFormat(version) {
+  const m = String(version || '').match(/^(\d+)\.(\d+)/);
+  if (!m) return 'short';
+  const major = Number(m[1]);
+  return major < 1 || (major === 1 && Number(m[2]) < 2) ? 'class-id' : 'short';
+}
+
+/** A check class: …CL_… (CL_CI_TEST_…, ZCL_…, /NS/CL_…) or a class of the SCI message catalog */
+const CLASS_NAME = /^(?:\/[A-Z0-9_]+\/)?[A-Z0-9]*CL_[A-Z0-9_]+$/i;
+let CLASS_NAMES = null;
+function isCheckClass(name) {
+  if (!CLASS_NAMES) CLASS_NAMES = new Set(CATALOG.map((m) => String(m.clsname || '').toUpperCase()).filter(Boolean));
+  return CLASS_NAME.test(name) || CLASS_NAMES.has(name.toUpperCase());
+}
+
+/** The number ADT 1.2.0 adds to a finding repeated on the same line ("1700 - 2") */
+const REPEAT_NO = /^[1-9]\d?$/;
+const none = (s) => /^(?:undefined|null)?$/i.test(s);
+
+/**
+ * Check class and message id of an ATC diagnostic code, as the ADT version writes it (adtCodeFormat).
+ * @returns {{ checkClass: string, messageId: string }} '' for what the code does not hold
+ */
+function parseAtcCode(code, format) {
+  const p = String(code == null ? '' : code).split('-').map((s) => s.trim());
+  let cls = '';
+  let id = '';
+  if (p.length >= 3) [cls, id] = p;
+  else if (p.length === 2) {
+    // 1.2.0 without a check class: "<message id> - <n>"; otherwise "<check class> - <message id>"
+    if (format !== 'class-id' && !none(p[0]) && !isCheckClass(p[0]) && REPEAT_NO.test(p[1])) id = p[0];
+    else [cls, id] = p;
+  } else if (p[0] !== 'Finding' && !none(p[0])) {
+    if (isCheckClass(p[0])) cls = p[0];
+    else id = p[0];
+  }
+  return { checkClass: none(cls) ? '' : cls, messageId: none(id) ? '' : id };
+}
+
+/**
+ * ATC diagnostics → { line, checkClass, classes, messageId, message, severity }.
+ * The class and message id come from the ATC finding ADT 1.2.0 keeps on the diagnostic (atcFinding), else from the code as
+ * the ADT version writes it (parseAtcCode). checkClass is '' when ADT did not send one ("undefined - 0501", "0501"); classes
+ * are then resolved from the catalog.
+ * @param {Array<{source?: string, code?: any, message: string, range: {start: {line: number}}, severity?: number}>} diags
+ * @param {string} [adtVersion] version of ABAP Development Tools for VS Code that published them
+ */
+function readAtcDiagnostics(diags, adtVersion) {
+  const format = adtCodeFormat(adtVersion);
   const out = [];
   for (const d of diags || []) {
     if (!d || d.source !== 'ATC') continue;
-    const code = String(d.code && typeof d.code === 'object' ? d.code.value : d.code || '');
-    const m = code.match(/^\s*(\S+)\s*-\s*(\S*)\s*$/);
-    const cls = m ? m[1] : code;
+    const f = d.atcFinding && typeof d.atcFinding === 'object' ? d.atcFinding : null;
+    const ids = f && (f.checkClass || f.messageId)
+      ? parseAtcCode(String(f.checkClass || '') + ' - ' + String(f.messageId || ''), 'class-id')
+      : parseAtcCode(d.code && typeof d.code === 'object' ? d.code.value : d.code, format);
     const a = {
       line: d.range.start.line,
-      checkClass: /^(?:undefined|null)?$/i.test(cls) ? '' : cls,
-      messageId: m ? m[2] : '',
+      checkClass: ids.checkClass,
+      messageId: ids.messageId,
       message: String(d.message || ''),
       severity: d.severity,
     };
@@ -555,5 +606,6 @@ function factsFrom(atcFindings) {
 }
 
 module.exports = {
-  readAtcDiagnostics, matchAtc, applyAtc, trackChanges, classFamily, markerForAtc, classesLabel, factsFrom, checkVariantOf,
+  readAtcDiagnostics, adtCodeFormat, matchAtc, applyAtc, trackChanges, classFamily, markerForAtc, classesLabel, factsFrom,
+  checkVariantOf,
 };
