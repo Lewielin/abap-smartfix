@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.7
+
+- Minor documentation updates.
+
 ## 1.5.6
 
 - **SAP ECC support**: the ABAP release is detected in the SAP system (`abap-smartfix.abapRelease`, default `auto`), and rewrites and annotations only use syntax that release has.
