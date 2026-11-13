@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.6
+
+- **SAP ECC support**: the ABAP release is detected in the SAP system (`abap-smartfix.abapRelease`, default `auto`), and rewrites and annotations only use syntax that release has.
+- ATC findings for POSIX regular expressions (`FIND` / `REPLACE … REGEX`) get `##REGEX_POSIX` instead of being listed for an exemption.
+
 ## 1.5.5
 
 - **ABAP Development Tools for VS Code 1.2**: ATC findings are fixed again. ADT 1.2 reports ATC findings in a new format

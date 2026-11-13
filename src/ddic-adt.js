@@ -127,6 +127,73 @@ async function fetchProgram(destination, name, log) {
   }
 }
 
+// ---------------------------------------------------------------- ABAP release of the system
+
+/**
+ * The ABAP release is told by classes that came with a language feature (they are part of the kernel's ABAP and are not
+ * downported): CL_ABAP_UTCLONG with the type UTCLONG (7.54, also += etc.), CX_SY_ITAB_LINE_NOT_FOUND with table expressions
+ * (7.40 SP02, also NEW / REF / EXACT #( )). Without both it is 7.31 / 7.03: ADT cannot log on to older systems, so a system
+ * read through ADT always has pragmas (7.02).
+ */
+const RELEASE_MARKERS = [['7.54', 'cl_abap_utclong'], ['7.40', 'cx_sy_itab_line_not_found']];
+const OLDEST_ADT_RELEASE = '7.31';
+
+/** destination (upper case) → detected release; 'DEST' → Promise; 'DEST' → time of the last failed attempt */
+const releases = new Map();
+const releasePending = new Map();
+const releaseFailedAt = new Map();
+
+/** Whether a class exists: true / false, throws when the system could not be asked */
+async function classExists(destination, name) {
+  try {
+    const text = await readText(destination, name + '.clas.abap');
+    return new RegExp('^\\s*CLASS\\s+' + name + '\\s+DEFINITION\\b', 'im').test(text);
+  } catch (e) {
+    if (e && (e.code === 'FileNotFound' || /FileNotFound|EntryNotFound|not found|does not exist/i.test(String(e.message)))) return false;
+    throw e;
+  }
+}
+
+/**
+ * Detect the ABAP release of a destination once (cached for the session). Resolves to "7.54", "7.40", "7.31", or undefined when
+ * the system could not be asked (no ADT, not logged on, timeout); then it is asked again after RETRY_AFTER_MS.
+ */
+async function detectRelease(destination, log) {
+  if (!destination || !VALID_DESTINATION.test(destination) || !adtAvailable()) return undefined;
+  const d = destination.toUpperCase();
+  if (releases.has(d)) return releases.get(d);
+  if (releasePending.has(d)) return releasePending.get(d);
+  if (Date.now() - (releaseFailedAt.get(d) || 0) < RETRY_AFTER_MS) return undefined;
+  const run = (async () => {
+    try {
+      let release = OLDEST_ADT_RELEASE;
+      for (const [rel, cls] of RELEASE_MARKERS) {
+        if (await classExists(destination, cls)) {
+          release = rel;
+          break;
+        }
+      }
+      releases.set(d, release);
+      if (log) log('ABAP release of ' + destination + ': ' + release + (release === '7.54' ? ' or later' : '') +
+        ' (detected; set abap-smartfix.abapRelease to override)');
+      return release;
+    } catch (e) {
+      releaseFailedAt.set(d, Date.now());
+      if (log) log('ABAP release of ' + destination + ' could not be detected: ' + (e && e.message ? e.message : e));
+      return undefined;
+    } finally {
+      releasePending.delete(d);
+    }
+  })();
+  releasePending.set(d, run);
+  return run;
+}
+
+/** The detected release of a destination, undefined while unknown */
+function releaseOf(destination) {
+  return destination ? releases.get(String(destination).toUpperCase()) : undefined;
+}
+
 async function runLimited(tasks, limit) {
   let next = 0;
   const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
@@ -170,6 +237,8 @@ function viewFor(destination) {
 function clearCache() {
   cache.clear();
   failedAt.clear();
+  releases.clear();
+  releaseFailedAt.clear();
 }
 
 /**
@@ -183,4 +252,7 @@ function cacheSummary() {
   }).join(', ');
 }
 
-module.exports = { destinationOf, adtAvailable, prefetch, viewFor, clearCache, cacheSummary, affName };
+module.exports = {
+  destinationOf, adtAvailable, prefetch, viewFor, clearCache, cacheSummary, affName,
+  detectRelease, releaseOf, OLDEST_ADT_RELEASE,
+};

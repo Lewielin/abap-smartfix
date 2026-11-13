@@ -21,6 +21,7 @@
  */
 
 const { tokenName, kindOfToken, validToken } = require('./rules');
+const { releaseAtLeast } = require('./rewrites');
 const F = require('./finding');
 
 const CATALOG = require('./sci-catalog');
@@ -375,11 +376,16 @@ function markerForAtc(a, options) {
     if (!pragma && (!pcom || pcom === 'NOX' || pcom === 'CI_TABL_EXCEPTN')) {
       if (pcom === 'NOX' || pcom === 'CI_TABL_EXCEPTN') return { rule, source: 'catalog', exemption: true };
     } else {
-      const usePragma = pragma && !(opts.suppressStyle === 'pseudo' && pcom);
+      // Below release 7.02 there are no pragmas: the pseudo comment when the message has one
+      const usePragma = pragma && !((opts.suppressStyle === 'pseudo' || !releaseAtLeast({ options: opts }, '7.02')) && pcom);
       return { token: usePragma ? '##' + pragma.replace(/^##/, '') : '"#EC ' + pcom, rule, source: 'catalog' };
     }
   }
-  if (rule) return { token: rule.token, rule, source: 'rule' };
+  // The same choice as for the rule's own findings (suppressStyle, no pragmas below 7.02)
+  if (rule) {
+    const token = F.pickToken(rule, opts);
+    if (token) return { token, rule, source: 'rule' };
+  }
   const named = a.message.match(/##[A-Za-z0-9_]+/);
   if (named) return { token: named[0].toUpperCase(), source: 'message' };
   const pseudo = a.message.match(/"#EC\s+([A-Za-z0-9_]+)/i);

@@ -312,16 +312,6 @@ function compileCustomRules(customRules) {
   return out;
 }
 
-/** Choose token or altToken according to suppressStyle */
-function pickToken(rule, style) {
-  if (!rule.token) return '';
-  if (!rule.altToken || !style || style === 'rule') return rule.token;
-  const want = style === 'pragma' ? 'pragma' : 'pseudo';
-  if (kindOfToken(rule.token) === want) return rule.token;
-  if (kindOfToken(rule.altToken) === want) return rule.altToken;
-  return rule.token;
-}
-
 /**
  * The annotation of a rule: abap-smartfix.tokenOverrides (source 'setting'), otherwise the rule's own token (source 'rule').
  * variants: every name that counts as "already annotated" (token, altToken and the overriding name)
@@ -330,7 +320,7 @@ function resolveAnnotation(rule, opts) {
   const own = [rule.token, rule.altToken].filter(Boolean).map((t) => tokenName(kindOfToken(t), t));
   // Only a plain annotation: a setting must not be able to write other code into the source
   const override = validToken((opts.tokenOverrides || {})[rule.id]) ? String(opts.tokenOverrides[rule.id]).trim() : '';
-  const res = override ? { token: override, source: 'setting' } : { token: pickToken(rule, opts.suppressStyle), source: 'rule' };
+  const res = override ? { token: override, source: 'setting' } : { token: F.pickToken(rule, opts), source: 'rule' };
   const extra = res.token ? [tokenName(kindOfToken(res.token), res.token)] : [];
   res.variants = own.concat(extra.filter((n) => own.indexOf(n) < 0));
   return res;

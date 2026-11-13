@@ -177,7 +177,8 @@ const RULES = [
       isFmWithExceptions(s.upper) &&
       !s.pseudoComments.some((n) => n === 'FB_RC' || n === 'FB_NORC') &&
       !subrcChecked(ctx, s.index, ctx.options.subrcLookahead),
-    fix: (s, ctx) => RW.replacePseudoWithPragma(s, ctx, { CI_SUBRC: '##FM_SUBRC_OK' }),
+    // Pragmas need release 7.02; below it the rule has no annotation (pickToken in analyzer.js) and is fixed by hand
+    fix: (s, ctx) => (RW.releaseAtLeast(ctx, '7.02') ? RW.replacePseudoWithPragma(s, ctx, { CI_SUBRC: '##FM_SUBRC_OK' }) : null),
   },
   {
     id: 'select-no-order-by',
@@ -499,9 +500,11 @@ const RULES = [
     kind: 'rewrite',
     severity: 'information',
     title: 'Obsolete MOVE … TO',
-    why: 'MOVE a TO b is obsolete; use b = a. MOVE a ?TO b becomes b ?= a and MOVE EXACT a TO b becomes b = EXACT #( a ) (as abap-cleaner does).',
+    why: 'MOVE a TO b is obsolete; use b = a. MOVE a ?TO b becomes b ?= a and MOVE EXACT a TO b becomes b = EXACT #( a ) (as abap-cleaner does; EXACT #( ) needs release 7.40, below it MOVE EXACT is not listed).',
     enabled: true,
-    test: (s) => /^MOVE\s/.test(s.upper) && !/\bPERCENTAGE\b/.test(s.upper),
+    test: (s, ctx) =>
+      /^MOVE\s/.test(s.upper) && !/\bPERCENTAGE\b/.test(s.upper) &&
+      !(/^MOVE\s+EXACT\s/.test(s.upper) && !RW.releaseAtLeast(ctx, '7.40')),
     fix: (s, ctx) => RW.moveToAssign(s, ctx) || RW.chainedMoveToAssign(s, ctx),
   },
   {
@@ -566,9 +569,10 @@ const RULES = [
     kind: 'rewrite',
     severity: 'information',
     title: 'CREATE OBJECT (use NEW)',
-    why: 'CREATE OBJECT o EXPORTING p = v. can be written as o = NEW #( p = v ).; with TYPE cls, NEW cls( … ). Not rewritten with EXCEPTIONS, AREA HANDLE, a dynamic type, or when the target is read in its own parameter list (as in abap-cleaner).',
+    why: 'CREATE OBJECT o EXPORTING p = v. can be written as o = NEW #( p = v ).; with TYPE cls, NEW cls( … ). Not rewritten with EXCEPTIONS, AREA HANDLE, a dynamic type, or when the target is read in its own parameter list (as in abap-cleaner). NEW needs release 7.40; below it CREATE OBJECT is not listed.',
     enabled: true,
     test: (s, ctx) =>
+      RW.releaseAtLeast(ctx, '7.40') &&
       /^CREATE\s+OBJECT\s/.test(s.upper) &&
       !/\b(?:EXCEPTIONS|AREA\s+HANDLE|PARAMETER-TABLE|EXCEPTION-TABLE)\b|\bTYPE\s+\(/.test(s.upper) &&
       !!RW.createObjectToNew(s, ctx),
@@ -579,9 +583,9 @@ const RULES = [
     kind: 'rewrite',
     severity: 'information',
     title: 'GET REFERENCE OF (use REF #)',
-    why: 'GET REFERENCE OF a INTO r. can be written as r = REF #( a ).',
+    why: 'GET REFERENCE OF a INTO r. can be written as r = REF #( a ). REF #( ) needs release 7.40; below it GET REFERENCE is not listed.',
     enabled: true,
-    test: (s, ctx) => /^GET\s+REFERENCE\s+OF\s/.test(s.upper) && !!RW.getReferenceToRef(s, ctx),
+    test: (s, ctx) => RW.releaseAtLeast(ctx, '7.40') && /^GET\s+REFERENCE\s+OF\s/.test(s.upper) && !!RW.getReferenceToRef(s, ctx),
     fix: RW.getReferenceToRef,
   },
   {
@@ -589,11 +593,11 @@ const RULES = [
     kind: 'rewrite',
     severity: 'information',
     title: 'Obsolete pseudo comment (use a pragma)',
-    why: 'Pseudo comments for the extended program check are obsolete, e.g. "#EC NEEDED should be ##NEEDED and "#EC NOTEXT should be ##NO_TEXT (full SLIN_DESC table, as in abap-cleaner). Only the effective one is converted: "#EC right after the ", one space, code in upper case. Code Inspector "#EC CI_… comments are not affected.',
+    why: 'Pseudo comments for the extended program check are obsolete, e.g. "#EC NEEDED should be ##NEEDED and "#EC NOTEXT should be ##NO_TEXT (full SLIN_DESC table, as in abap-cleaner). Only the effective one is converted: "#EC right after the ", one space, code in upper case. Code Inspector "#EC CI_… comments are not affected. Pragmas need release 7.02; below it the pseudo comments are kept.',
     enabled: true,
     // Do not convert when the user prefers pseudo comments, to avoid fighting with suppressStyle
     test: (s, ctx) =>
-      ctx.options.suppressStyle !== 'pseudo' && !!RW.pseudoToPragma(s, ctx),
+      ctx.options.suppressStyle !== 'pseudo' && RW.releaseAtLeast(ctx, '7.02') && !!RW.pseudoToPragma(s, ctx),
     fix: RW.pseudoToPragma,
   },
 ];

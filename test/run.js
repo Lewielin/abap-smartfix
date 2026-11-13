@@ -696,6 +696,32 @@ console.log('\n== Lines stay within 255 characters (ABAP rejects longer ones) ==
     JSON.stringify(nb.plan.unfixable.map((u) => u.reason)));
 }
 
+console.log('\n== Release restrictions (SAP ECC) ==');
+{
+  const ids = (body, opts) => cleanFix(body, opts).findings.map((f) => f.ruleId);
+  check('7.40: CREATE OBJECT → NEW #( )', cf(['    CREATE OBJECT lo.'], { abapRelease: '7.40' })[0] === '    lo = NEW #( ).',
+    cf(['    CREATE OBJECT lo.'], { abapRelease: '7.40' })[0]);
+  check('7.31: CREATE OBJECT is not listed (no NEW)', ids(['    CREATE OBJECT lo.'], { abapRelease: '7.31' }).indexOf('obsolete-create-object') < 0);
+  check('7.31: GET REFERENCE is not listed (no REF #( ))',
+    ids(['    GET REFERENCE OF lv_a INTO lr_a.'], { abapRelease: '7.31' }).indexOf('obsolete-get-reference') < 0);
+  check('7.40: GET REFERENCE → REF #( )', cf(['    GET REFERENCE OF lv_a INTO lr_a.'], { abapRelease: '7.40' })[0] === '    lr_a = REF #( lv_a ).');
+  check('7.31: MOVE EXACT is not listed (no EXACT #( ))', ids(['    MOVE EXACT iv_a TO ev_b.'], { abapRelease: '7.31' }).indexOf('obsolete-move') < 0);
+  check('7.31: chained MOVE with EXACT stays as it is (the other part is left for a manual fix)',
+    cf(['    MOVE: EXACT iv_a TO ev_b, iv_c TO ev_d.'], { abapRelease: '7.31' })[0] === '    MOVE: EXACT iv_a TO ev_b, iv_c TO ev_d.',
+    cf(['    MOVE: EXACT iv_a TO ev_b, iv_c TO ev_d.'], { abapRelease: '7.31' })[0]);
+  check('7.31: plain MOVE is still rewritten', cf(['    MOVE iv_a TO ev_b.'], { abapRelease: '7.31' })[0] === '    ev_b = iv_a.');
+  check('7.31: ADD → a = a + b', cf(['    ADD 1 TO lv_a.'], { abapRelease: '7.31' })[0] === '    lv_a = lv_a + 1.');
+  check('7.02: "#EC NOBREAK → ##NO_BREAK', cf(['    WRITE / lv_a. "#EC NOBREAK'], { abapRelease: '7.02' })[0] === '    WRITE / lv_a ##NO_BREAK.');
+  check('7.01: "#EC NOBREAK is kept (no pragmas)', ids(['    WRITE / lv_a. "#EC NOBREAK'], { abapRelease: '7.01' }).indexOf('obsolete-pseudo-comment') < 0);
+  const old = { abapRelease: '7.01', fixMode: 'suppress', suppressStyle: 'pragma' };
+  check('7.01: BREAK-POINT gets "#EC NOBREAK even with suppressStyle pragma',
+    cf(['    BREAK-POINT.'], old)[0] === '    BREAK-POINT. "#EC NOBREAK', cf(['    BREAK-POINT.'], old)[0]);
+  const fm = analyzeRaw(fmSrc, { abapRelease: '7.01' }).findings.find((f) => f.ruleId === 'fm-subrc-not-checked');
+  check('7.01: CALL FUNCTION without sy-subrc check (pragma only) is left for a manual fix',
+    fm && !fm.canSuppress && !fm.rewrite && fm.action === 'manual', fm && JSON.stringify({ t: fm.token, a: fm.action }));
+  check('latest / auto: CREATE OBJECT is still rewritten', cf(['    CREATE OBJECT lo.'], { abapRelease: 'auto' })[0] === '    lo = NEW #( ).');
+}
+
 console.log('\n== Security: settings and rule files cannot write code ==');
 const { validToken } = require('../src/rules');
 check('plain annotations are valid tokens', ['##NEEDED', '##SHADOW[FOO]', '"#EC CI_SUBRC', '"#EC *'].every(validToken));

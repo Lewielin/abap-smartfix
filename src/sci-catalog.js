@@ -31,6 +31,10 @@ const SEEN_IN_ATC = [
   e('CL_CI_TEST_SYNTAX_CHECK', 'W247', 'NOX', '', '', /MESSAGE GGC\b/i),
   e('CL_CI_TEST_SYNTAX_CHECK', 'W126', 'NOX', '', '', /MESSAGE GYA\b/i),
   e('CL_CI_TEST_SYNTAX_CHECK', 'W251', 'NOX', '', '', /MESSAGE GXD\b/i),
+  // Syntax check warning on FIND / REPLACE … REGEX (POSIX regular expressions are obsolete from 7.55): SCIMESSAGES lists it
+  // as NOX, but the syntax check warning has its own pragma (also reported through SLIN)
+  e('CL_CI_TEST_EXTENDED_CHECK', 'W364', '', '', 'REGEX_POSIX', /\bPOSIX\b/i),
+  e('CL_CI_TEST_SYNTAX_CHECK', 'W364', '', '', 'REGEX_POSIX', /\bPOSIX\b/i),
   e('CL_CI_TEST_SELECT_TAW_BYBUF', '0051', 'CI_SGLSELECT', 'CI_GENBUFF', '', /single record buffered table .* cannot use buffer/i),
   e('CL_CI_TEST_SELECT_TAW_BYBUF', '0006', 'CI_BUFFCLIENT', '', '', /client-specific table .* CLIENT SPECIFIED, but no client field/i),
   e('CL_CI_TEST_EXTENDED_CHECK', '', '', '', 'BOOL_OK', /is not a valid comparison value/i),

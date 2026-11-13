@@ -135,6 +135,14 @@ check('suppressStyle=pseudo prefers the pseudo comment', Atc.markerForAtc({ chec
   { suppressStyle: 'pseudo' }).token === '"#EC NEEDED');
 check('tokenOverrides win over the catalog', Atc.markerForAtc({ checkClass: 'CL_CI_TEST_EXTENDED_CHECK', messageId: '0906', message: 'Unused fields' },
   { tokenOverrides: { 'unused-declaration': '##MY_NEEDED' } }).token === '##MY_NEEDED');
+{
+  // A message the catalog does not know, recognized by a rule: the rule's annotation, chosen as for its own findings
+  const brk = { checkClass: 'CL_CI_TEST_EXTENDED_CHECK', messageId: 'ZZ01', message: 'BREAK-POINT statement found' };
+  check('rule fallback: the rule annotation', Atc.markerForAtc(brk, {}).token === '##NO_BREAK');
+  check('rule fallback: suppressStyle=pseudo gives the pseudo comment', Atc.markerForAtc(brk, { suppressStyle: 'pseudo' }).token === '"#EC NOBREAK',
+    Atc.markerForAtc(brk, { suppressStyle: 'pseudo' }).token);
+  check('rule fallback: below 7.02 the pseudo comment', Atc.markerForAtc(brk, { abapRelease: '7.01' }).token === '"#EC NOBREAK');
+}
 check('fallback: a ##PRAGMA named in the message text', mk('CL_CI_TEST_OTHER', '0001', 'Can be hidden with ##FOO_OK').token === '##FOO_OK');
 const exSrc = 'REPORT z.\nSTART-OF-SELECTION.\n  lv_a = 1.\n  lv_b = 2.\n';
 const exM = Atc.matchAtc(analyze(exSrc, {}), Atc.readAtcDiagnostics([
@@ -596,6 +604,25 @@ console.log('\n== ADT for VS Code 1.2.0: codes "<message id>", " - <n>" for repe
   check('1.2.0: "AMB_SINGLE" → SELECT without ORDER BY check, "#EC CI_NOORDER',
     aAmb.classes.indexOf('CL_CI_TEST_NO_ORDER_BY') >= 0 && Atc.markerForAtc(aAmb, {}).token === '"#EC CI_NOORDER',
     JSON.stringify(aAmb.classes) + ' ' + JSON.stringify(Atc.markerForAtc(aAmb, {}).token));
+
+  // POSIX regular expression (syntax check warning W364, reported through SLIN): ##REGEX_POSIX, not an exemption
+  {
+    const posix = 'Syntax check warning. POSIX regular expressions are obsolete. Internal message code: MESSAGE GU)';
+    const markers = [['W364', '1.2.0'], ['CL_CI_TEST_EXTENDED_CHECK - W364', '1.2.0'], ['undefined - W364', '1.1.2']]
+      .map(([code, version]) => Atc.markerForAtc(Atc.readAtcDiagnostics([d12(1, code, posix)], version)[0], {}));
+    check('W364 POSIX regex → ##REGEX_POSIX (ADT 1.2.0 and 1.1.x codes)', markers.every((m) => m.token === '##REGEX_POSIX' && !m.exemption),
+      JSON.stringify(markers.map((m) => m.token || (m.exemption ? 'exemption' : m.source))));
+    const reSrc = ['REPORT z.', 'DATA: lv_inc TYPE string, lv_grp TYPE string, lv_no TYPE string.', 'START-OF-SELECTION.',
+      "  FIND REGEX '^L(.+)U(\\d\\d)$' IN lv_inc SUBMATCHES lv_grp lv_no.", '  WRITE / lv_no.', ''].join('\n');
+    const reOpts = { fixMode: 'auto' };
+    const reSt = Object.assign({ version: 1 },
+      Atc.matchAtc(analyze(reSrc, reOpts), Atc.readAtcDiagnostics([d12(4, 'W364', posix)], '1.2.0')));
+    const reR = Atc.applyAtc(analyze(reSrc, reOpts), reSt, true, reOpts);
+    const { planEdits, applyEditsToText } = require('../src/fixer');
+    const reFixed = applyEditsToText(reSrc, planEdits(reR.lines, reR.comments, reR.findings).edits).split('\n')[3];
+    check('FIND REGEX gets ##REGEX_POSIX before the period',
+      reFixed === "  FIND REGEX '^L(.+)U(\\d\\d)$' IN lv_inc SUBMATCHES lv_grp lv_no ##REGEX_POSIX.", reFixed);
+  }
 
   // The whole way, as in a program ATC checked with ADT 1.2.0
   const src = [

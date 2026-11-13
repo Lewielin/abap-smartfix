@@ -5,8 +5,9 @@
  * rule is on, how the finding is fixed (fix mode → action and label), where it is, and whether its statement is annotated.
  */
 
-const { RULES } = require('./rules');
+const { RULES, kindOfToken } = require('./rules');
 const { SCI_RULES } = require('./rules-sci');
+const { releaseAtLeast } = require('./rewrites');
 
 /** The built-in rules (custom rules are compiled per analysis) */
 const BUILTIN_RULES = RULES.concat(SCI_RULES);
@@ -46,6 +47,24 @@ function decideAction(mode, rewrite, canSuppress) {
   if (rewrite && (mode === 'rewrite' || rewrite.safety === 'safe')) return 'rewrite';
   if (canSuppress) return 'suppress';
   return 'manual';
+}
+
+/**
+ * The annotation of a rule: token or altToken according to abap-smartfix.suppressStyle. Below release 7.02 there are no
+ * pragmas: the pseudo comment, or '' (no annotation: the finding is fixed by hand).
+ */
+function pickToken(rule, options) {
+  const opts = options || {};
+  if (!rule || !rule.token) return '';
+  if (!releaseAtLeast({ options: opts }, '7.02')) {
+    return [rule.token, rule.altToken].find((t) => t && kindOfToken(t) === 'pseudo') || '';
+  }
+  const style = opts.suppressStyle;
+  if (!rule.altToken || !style || style === 'rule') return rule.token;
+  const want = style === 'pragma' ? 'pragma' : 'pseudo';
+  if (kindOfToken(rule.token) === want) return rule.token;
+  if (kindOfToken(rule.altToken) === want) return rule.altToken;
+  return rule.token;
 }
 
 /** The fix as the sidebar and the Quick Pick show it */
@@ -102,6 +121,7 @@ module.exports = {
   hasSciClasses,
   fixModeOf,
   decideAction,
+  pickToken,
   fixLabel,
   presentAnnotations,
   isAnnotated,

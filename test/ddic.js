@@ -220,7 +220,24 @@ Module._load = origLoad;
   await Adt.prefetch('OFFLINE', ['ZSF_DEMO_MATERIAL'], null);
   check('a failed name is not asked again right away', reads.length === offlineReads);
 
+  // ABAP release from the marker classes
+  files['/flat/S4/cl_abap_utclong.clas.abap'] = 'class CL_ABAP_UTCLONG definition public final create public.\nendclass.';
+  files['/flat/S4/cx_sy_itab_line_not_found.clas.abap'] = 'CLASS cx_sy_itab_line_not_found DEFINITION PUBLIC.\nENDCLASS.';
+  files['/flat/EHP8/cx_sy_itab_line_not_found.clas.abap'] = 'CLASS cx_sy_itab_line_not_found DEFINITION PUBLIC.\nENDCLASS.';
+  check('release: CL_ABAP_UTCLONG → 7.54', (await Adt.detectRelease('S4', null)) === '7.54' && Adt.releaseOf('s4') === '7.54');
+  check('release: only CX_SY_ITAB_LINE_NOT_FOUND → 7.40', (await Adt.detectRelease('EHP8', null)) === '7.40');
+  check('release: neither class → 7.31', (await Adt.detectRelease('DEV', null)) === '7.31');
+  const releaseReads = reads.length;
+  check('release: detected once per destination', (await Adt.detectRelease('DEV', null)) === '7.31' && reads.length === releaseReads);
+  check('release: not logged on → unknown', (await Adt.detectRelease('OFFLINE', null)) === undefined && Adt.releaseOf('OFFLINE') === undefined);
+  const offlineReleaseReads = reads.length;
+  await Adt.detectRelease('OFFLINE', null);
+  check('release: a failed detection is not repeated right away', reads.length === offlineReleaseReads);
+  Adt.clearCache();
+  check('release: clearCache forgets it', Adt.releaseOf('DEV') === undefined);
+
   installed = false;
+  check('without ADT the release stays unknown', (await Adt.detectRelease('DEV', null)) === undefined);
   check('without ABAP Development Tools for VS Code nothing is read', (await Adt.prefetch('DEV', ['ZSF_DEMO_PLANT'], null)) === 0);
 
   console.log('\n' + (failed === 0 ? 'ALL PASS' : failed + ' FAILED'));

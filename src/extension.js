@@ -101,12 +101,42 @@ function readOptions(uri) {
     fixMode: conf.get('fixMode', 'auto'),
     ruleFixModes: conf.get('ruleFixModes', {}),
     suppressStyle: conf.get('suppressStyle', 'rule'),
-    abapRelease: conf.get('abapRelease', 'latest'),
+    abapRelease: abapReleaseFor(uri),
     selectSingleCheck: conf.get('selectSingleCheck', 'certain'),
     customRules: loadCustomRules(uri),
     ddic: DdicAdt.viewFor(ddicDestination(uri)),
     bufferedTables: atc.bufferedTables(uri),
   };
+}
+
+/** ADT destination whose release decides the syntax of rewrites: the document's, or abap-smartfix.ddic.destination */
+function releaseDestination(uri) {
+  return DdicAdt.adtAvailable() ? DdicAdt.destinationOf(uri, cfg(uri).get('ddic.destination', '')) : '';
+}
+
+/**
+ * abap-smartfix.abapRelease: a release that is set is used as it is. "auto": the release detected in the SAP system through
+ * ADT; until it is known (or when it cannot be detected) the oldest release ADT supports, so no rewrite writes syntax the system
+ * may not have. Files without an ADT destination (abapGit) keep "latest", as before.
+ */
+function abapReleaseFor(uri) {
+  const set = String(cfg(uri).get('abapRelease', 'auto') || 'auto').trim();
+  if (set.toLowerCase() !== 'auto') return set;
+  const destination = releaseDestination(uri);
+  if (!destination) return 'latest';
+  return DdicAdt.releaseOf(destination) || DdicAdt.OLDEST_ADT_RELEASE;
+}
+
+/** Detect the release of the document's system once ("auto"); resolves when it is known or could not be detected */
+async function detectRelease(doc) {
+  if (String(cfg(doc.uri).get('abapRelease', 'auto') || 'auto').trim().toLowerCase() !== 'auto') return;
+  const destination = releaseDestination(doc.uri);
+  if (!destination || DdicAdt.releaseOf(destination)) return;
+  const key = doc.uri.toString();
+  const version = doc.version;
+  const release = await DdicAdt.detectRelease(destination, log);
+  // Analyzed so far with the oldest release: analyze again with the detected one
+  if (release && tracked.has(key) && !doc.isClosed && doc.version === version) scanDocument(doc);
 }
 
 /** ADT destination whose DDIC is used for this document, or '' (DDIC lookups off or no destination) */
@@ -245,6 +275,7 @@ function scanDocument(doc) {
   provider.refresh();
   updateStatusBar();
   prefetchDdic(doc);
+  detectRelease(doc).catch((e) => log('ABAP release detection failed: ' + (e && e.message ? e.message : e)));
   return result;
 }
 
@@ -1014,6 +1045,7 @@ function activate(context) {
     vscode.commands.registerCommand('abap-smartfix.scanFile', async () => {
       const doc = await activeAbapDoc();
       if (!doc) return;
+      await detectRelease(doc);
       await atc.run(doc);
       const result = scanDocument(doc);
       await showSidebar();
@@ -1033,6 +1065,7 @@ function activate(context) {
     vscode.commands.registerCommand('abap-smartfix.applyAll', async () => {
       const doc = await activeAbapDoc();
       if (!doc) return;
+      await detectRelease(doc);
       await atc.run(doc);
       await showSidebar();
       await confirmAndApply(doc, null);
@@ -1041,6 +1074,7 @@ function activate(context) {
     vscode.commands.registerCommand('abap-smartfix.applySuppressOnly', async () => {
       const doc = await activeAbapDoc();
       if (!doc) return;
+      await detectRelease(doc);
       await atc.run(doc);
       await showSidebar();
       await confirmAndApply(doc, 'suppress');
@@ -1049,6 +1083,7 @@ function activate(context) {
     vscode.commands.registerCommand('abap-smartfix.previewFix', async () => {
       const doc = await activeAbapDoc();
       if (!doc) return;
+      await detectRelease(doc);
       await atc.run(doc);
       await showSidebar();
       await previewFix(doc, null);

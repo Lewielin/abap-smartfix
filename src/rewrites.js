@@ -279,7 +279,10 @@ function simpleReplace(regex, build, summary) {
   };
 }
 
-/** Whether the target release allows the syntax (abap-smartfix.abapRelease, e.g. "7.50"; empty or "latest" = newest) */
+/**
+ * Whether the target release allows the syntax (abap-smartfix.abapRelease, e.g. "7.50"; empty, "latest" or "auto" = newest;
+ * extension.js replaces "auto" by the release detected in the SAP system before it analyzes)
+ */
 function releaseAtLeast(ctx, version) {
   const want = String((ctx.options && ctx.options.abapRelease) || 'latest').trim();
   const num = (v) => {
@@ -335,6 +338,8 @@ function moveAssignText(w, start, ctx) {
   const to = lastTopLevel(w, from, (u) => u === 'TO' || u === '?TO');
   if (to <= from || to !== w.length - 2 || !isOperand(w[to + 1].text)) return null;
   if (exact && w[to].upper === '?TO') return null;
+  // EXACT #( ) is a constructor expression (release 7.40); older releases keep MOVE EXACT
+  if (exact && !releaseAtLeast(ctx, '7.40')) return null;
   const term = sliceWords(ctx, w, from, to - 1);
   const dest = w[to + 1].text;
   const text = dest + (w[to].upper === '?TO' ? ' ?= ' : ' = ') + (exact ? 'EXACT #( ' + term + ' )' : term);
