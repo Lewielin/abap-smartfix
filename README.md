@@ -71,18 +71,6 @@ Other ways to fix:
 
 Run SmartFix for ABAP: Show Rules to see every rule.
 
-## Older releases (SAP ECC)
-
-Rewrites only write syntax the system has. With ABAP Development Tools for VS Code, the release is detected in the SAP system the first time a file of it is analyzed (shown in the SmartFix for ABAP output). Until it is known, the rewrites keep to release 7.31.
-
-| Release | What changes |
-| --- | --- |
-| Below 7.54 (ECC 6.0 EHP8 and older) | `ADD a TO b` becomes `b = b + a` instead of `b += a` |
-| Below 7.40 (ECC 6.0 EHP6 and older) | `CREATE OBJECT`, `GET REFERENCE` and `MOVE EXACT` are not rewritten (no `NEW`, `REF #( )`, `EXACT #( )`) |
-| Below 7.02 (ECC 6.0 EHP4 and older) | Pseudo comments instead of pragmas; a finding with only a pragma is fixed by hand |
-
-For files edited without ADT, such as abapGit `.abap` files of an ECC system, set `abap-smartfix.abapRelease`, for example `7.50` for EHP8 or `7.31` for EHP6.
-
 ## Known limits
 
 - One file at a time; includes and called programs are not followed.
